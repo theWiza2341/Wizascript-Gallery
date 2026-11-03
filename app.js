@@ -1,4 +1,4 @@
-// Wizascript Card Gallery website 0.1.0-dev1 (gallery code from Wizascript 1.7.1). Built by build.mjs from src/; edit src/, not this file.
+// Wizascript Card Gallery website 0.1.0-dev2 (gallery code from Wizascript 1.7.1). Built by build.mjs from src/; edit src/, not this file.
 (() => {
   // src/setup.js
   var PREFIX = "wzg:";
@@ -48,7 +48,11 @@
       ctl.abort();
       if (o.ontimeout) o.ontimeout();
     }, o.timeout);
-    fetch(o.url, { method: o.method || "GET", headers: o.headers, body: o.data, signal: ctl ? ctl.signal : void 0 }).then(async (r) => {
+    const headers = { ...o.headers || {} };
+    if (o.data === void 0 || o.data === null) Object.keys(headers).forEach((k) => {
+      if (k.toLowerCase() === "content-type") delete headers[k];
+    });
+    fetch(o.url, { method: o.method || "GET", headers, body: o.data, signal: ctl ? ctl.signal : void 0 }).then(async (r) => {
       clearTimeout(timer);
       const text = await r.text();
       if (o.onload) o.onload({ status: r.status, responseText: text });
@@ -276,7 +280,7 @@
   }
   var CARD_FONT = `"DTM-Mono", "DTM Mono", "WZ DTM Mono", monospace`;
   var TILE_CSS = `
-@font-face { font-family: "WZ DTM Mono"; src: url("${UC}/fonts/DTM-Mono.otf") format("opentype"), url("${UCE}images/fonts/DTM-Mono.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "WZ DTM Mono"; src: ${UC ? "" : `url("/fonts/DTM-Mono.otf") format("opentype"), `}url("${UCE}images/fonts/DTM-Mono.otf") format("opentype"); font-display: swap; }
 .wz-gl-card, .wz-gl-artifact { font-family: ${CARD_FONT}; }
 /* Like the game (Bootstrap): sizes include padding and borders, inside or outside the window. */
 .wz-gl-card, .wz-gl-card *, .wz-gl-artifact, .wz-gl-artifact * { box-sizing: border-box; }

@@ -39,7 +39,14 @@ window.GM_xmlhttpRequest = (o) => {
   const ctl = typeof AbortController === "function" ? new AbortController() : null;
   let timer = null;
   if (o.timeout && ctl) timer = setTimeout(() => { ctl.abort(); if (o.ontimeout) o.ontimeout(); }, o.timeout);
-  fetch(o.url, { method: o.method || "GET", headers: o.headers, body: o.data, signal: ctl ? ctl.signal : undefined })
+  // Wizascript labels every request as JSON. A browser treats a labelled
+  // request as one that needs the other site's OK first (a CORS preflight);
+  // raw.githubusercontent.com never gives it, so its files would be blocked.
+  // Only requests that send a body (to the gallery server, which allows it)
+  // keep the label.
+  const headers = { ...(o.headers || {}) };
+  if (o.data === undefined || o.data === null) Object.keys(headers).forEach((k) => { if (k.toLowerCase() === "content-type") delete headers[k]; });
+  fetch(o.url, { method: o.method || "GET", headers, body: o.data, signal: ctl ? ctl.signal : undefined })
     .then(async (r) => {
       clearTimeout(timer);
       const text = await r.text();
