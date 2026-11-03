@@ -1,6 +1,6 @@
 {
   "name": "wizascript-gallery",
-  "version": "0.1.0-dev2",
+  "version": "0.1.0-dev3",
   "private": true,
   "description": "The Wizascript Card Gallery as a website (GitHub Pages).",
   "type": "module",

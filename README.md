@@ -1,7 +1,7 @@
 # Wizascript Card Gallery (website)
 
 The Card Gallery from Wizascript's Card Maker, as a website for players who don't use the userscript:
-**https://thewiza2341.github.io/wizascript-gallery/**
+**https://thewiza2341.github.io/Wizascript-Gallery/**
 
 It is the same gallery, not a copy. Both use the same gallery server (the `wizascript-gallery-worker` Cloudflare Worker) and the same `gallery` branch of `theWiza2341/Wizascript`. Posts, votes, contests, account links and review keys are shared 1:1.
 
@@ -39,12 +39,6 @@ Nothing here notifies Wizascript players: this repo is separate from Wizascript.
 npm install
 node build.mjs ../wizascript      # path to a Wizascript checkout
 ```
-
-## Dev builds: sample data
-
-Dev builds mix made-up entries into Browse and Contest (a **Samples** switch in the top bar), so layouts can be judged before there are many real posts. Samples are never sent anywhere; votes on them stay on the page.
-
-**To remove for release:** delete `src/samples.js` and the two lines in `src/main.js` that mention it, then rebuild.
 
 ## What the site keeps in your browser
 

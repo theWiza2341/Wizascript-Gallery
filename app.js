@@ -1,4 +1,4 @@
-// Wizascript Card Gallery website 0.1.0-dev2 (gallery code from Wizascript 1.7.1). Built by build.mjs from src/; edit src/, not this file.
+// Wizascript Card Gallery website 0.1.0-dev3 (gallery code from Wizascript 1.7.2). Built by build.mjs from src/; edit src/, not this file.
 (() => {
   // src/setup.js
   var PREFIX = "wzg:";
@@ -460,16 +460,16 @@
       bgKey = k;
     }
     const bg = [(bgKey >> 8 & 15) * 16 + 8, (bgKey >> 4 & 15) * 16 + 8, (bgKey & 15) * 16 + 8];
-    const on2 = new Uint8Array(w * h2);
-    for (let p = 0, i = 0; p < on2.length; p++, i += 4) {
-      if (px[i + 3] >= 40 && Math.abs(px[i] - bg[0]) + Math.abs(px[i + 1] - bg[1]) + Math.abs(px[i + 2] - bg[2]) > 60) on2[p] = 1;
+    const on = new Uint8Array(w * h2);
+    for (let p = 0, i = 0; p < on.length; p++, i += 4) {
+      if (px[i + 3] >= 40 && Math.abs(px[i] - bg[0]) + Math.abs(px[i + 1] - bg[1]) + Math.abs(px[i + 2] - bg[2]) > 60) on[p] = 1;
     }
     const rowHas = (y, x0, x1) => {
-      for (let x = x0; x <= x1; x++) if (on2[y * w + x]) return true;
+      for (let x = x0; x <= x1; x++) if (on[y * w + x]) return true;
       return false;
     };
     const colHas = (x, y0, y1) => {
-      for (let y = y0; y <= y1; y++) if (on2[y * w + x]) return true;
+      for (let y = y0; y <= y1; y++) if (on[y * w + x]) return true;
       return false;
     };
     const runs = (from, to, has, gap = 3) => {
@@ -806,14 +806,14 @@
       }
       if (adminKey) headers["X-WZ-Admin"] = adminKey;
       const done = (status, text) => {
-        let data2 = null;
+        let data = null;
         try {
-          data2 = text ? JSON.parse(text) : null;
+          data = text ? JSON.parse(text) : null;
         } catch (e) {
         }
-        if (status >= 200 && status < 300) return resolve(data2);
-        if (status === 404 && !data2) return resolve(null);
-        reject(new ApiError(status, data2 && data2.error || "http", data2 && data2.message || `The gallery server answered ${status}.`, data2));
+        if (status >= 200 && status < 300) return resolve(data);
+        if (status === 404 && !data) return resolve(null);
+        reject(new ApiError(status, data && data.error || "http", data && data.message || `The gallery server answered ${status}.`, data));
       };
       if (typeof GM_xmlhttpRequest === "function") {
         GM_xmlhttpRequest({
@@ -1219,9 +1219,9 @@
     function show() {
       const grid = area.querySelector(".wz-gl-grid");
       if (grid) {
-        const on2 = new Set(pages[state2.page] || []);
+        const on = new Set(pages[state2.page] || []);
         items.forEach((it, i) => {
-          it.style.display = on2.has(i) ? "" : "none";
+          it.style.display = on.has(i) ? "" : "none";
         });
         grid.classList.remove("wz-gl-in-r", "wz-gl-in-l");
         if (animate) {
@@ -1390,9 +1390,9 @@
     function show() {
       const grid = area.querySelector(".wz-gl-grid");
       if (grid) {
-        const on2 = new Set(pages[state2.page] || []);
+        const on = new Set(pages[state2.page] || []);
         items.forEach((it, i) => {
-          it.style.display = on2.has(i) ? "" : "none";
+          it.style.display = on.has(i) ? "" : "none";
         });
         grid.classList.remove("wz-gl-in-r", "wz-gl-in-l");
         if (animate) {
@@ -3297,8 +3297,8 @@ ${CONTEST_CSS}
         notify();
         if (open) render();
       },
-      setOpen(on2) {
-        setView(on2 ? tab : "editor");
+      setOpen(on) {
+        setView(on ? tab : "editor");
       },
       view: () => open ? tab : "editor",
       setView,
@@ -3307,9 +3307,9 @@ ${CONTEST_CSS}
       },
       // Send queued votes now (the Card Maker is closing or being minimised).
       flush: () => voteQueue.flush(),
-      receiveCards(data2) {
+      receiveCards(data) {
         clearTimeout(readTimer);
-        read = { source: data2.source, label: editorLabel(data2.source), groups: (data2.groups || []).map((g) => ({ name: g.name, parts: (g.parts || []).map((p) => ({ ...p, pick: false })) })) };
+        read = { source: data.source, label: editorLabel(data.source), groups: (data.groups || []).map((g) => ({ name: g.name, parts: (g.parts || []).map((p) => ({ ...p, pick: false })) })) };
         const n = read.groups.reduce((s, g) => s + g.parts.length, 0);
         say(`Found ${n} card${n === 1 ? "" : "s"}. Tick what to add.`);
         tab = "submit";
@@ -3450,195 +3450,6 @@ a { color: #8ec5ff; }
   .wz-site-credit { display: none; }
 }
 `;
-
-  // src/samples.js
-  var KEY2 = "wizascript.site.samples";
-  var PREFIX2 = "zzs";
-  var isSample = (id) => typeof id === "string" && id.startsWith(PREFIX2);
-  var DAY = 864e5;
-  function rng(seed) {
-    let s = seed >>> 0;
-    return () => (s = s * 1664525 + 1013904223 >>> 0) / 4294967296;
-  }
-  var AUTHORS = ["(sample) Dustpile", "(sample) Froggit_Fan", "(sample) Tem", "(sample) RoyalGuard", "(sample) Spamton_G", "(sample) moldsmal", "(sample) Lancer99", "(sample) Annoying_Dog"];
-  var MONSTERS = [
-    ["Sleepy Froggit", "Turn start: Heal 1 HP to this monster."],
-    ["Pebble Collector", "Magic: Draw a card. If it costs 2 or less, give it +1 ATK."],
-    ["Tiny Knight", "Taunt. Dust: Summon a 1/1 Squire."],
-    ["Lost Balloon", "Haste. Turn end: Deal 1 DMG to this monster."],
-    ["Hotdog Vendor", "Magic: Give a random ally +1/+1."],
-    ["Glyph Reader", "Your spells cost 1 less."],
-    ["Snowy Sentry", "Paralyze an enemy monster with 3 ATK or less."],
-    ["Mirror Mage", "Magic: Copy the stats of an enemy monster."],
-    ["Moss Golem", "Armor. Can't attack the turn it's played."],
-    ["Echo Bird", "Each time you cast a spell, deal 1 DMG to the enemy."],
-    ["Clockwork Mouse", "Dodge. Loop 2."],
-    ["Garden Guardian", "Support: Give adjacent allies Taunt."],
-    ["Lantern Ghost", "Transparency. Dust: Draw a card."],
-    ["Kettle Knight", "Burn 2. Taunt."],
-    ["Starfall Wisp", "Magic: Deal 2 DMG to a random enemy monster."],
-    ["Vending Bot", "Turn start: Gain 1 G."],
-    ["Bramble Fox", "Charge. Dust: Give an ally +2 ATK."],
-    ["Puddle Slime", "When this takes DMG, summon a 1/1 copy of it."],
-    ["Chess Pawn", "Magic: If you control a King, gain +3/+3."],
-    ["Cardboard Castle", "Taunt. Invulnerable for one turn."]
-  ];
-  var SPELLS = [
-    ["Quick Nap", "Heal 4 HP to an ally monster."],
-    ["Spaghetti Toss", "Deal 3 DMG to an enemy monster. Draw a card."],
-    ["Sudden Storm", "Deal 1 DMG to all monsters."],
-    ["Second Wind", "Give an ally monster +2/+2 and Haste."],
-    ["Pocket Sand", "Silence an enemy monster."],
-    ["Lucky Coin", "Gain 2 G. Draw a card."]
-  ];
-  var ARTIFACTS = [["Rusty Locket", "Your first monster each turn costs 1 less."], ["Bag of Glue", "Your monsters with Taunt have +0/+2."], ["Old Compass", "At the start of the match, draw an extra card."]];
-  var ENCHANTS = [["Overgrowth", "At the end of each turn, the monster here gains +1 HP."], ["Frozen Floor", "Monsters played here are Paralyzed for one turn."]];
-  var RARITIES = ["BASE_COMMON", "BASE_COMMON", "BASE_RARE", "BASE_EPIC", "BASE_LEGENDARY", "DELTARUNE_COMMON", "DELTARUNE_RARE", "DELTARUNE_EPIC", "DELTARUNE_LEGENDARY"];
-  var MONSTER_ART = ["art/10e-0.png", "art/10f-0.png", null];
-  var ENCHANT_ART = ["art/10e-1.png"];
-  function build() {
-    const r = rng(2341);
-    const pick = (a) => a[Math.floor(r() * a.length)];
-    const now = Date.now();
-    let n = 0;
-    const id = (p) => `${p}${(n++).toString(36).padStart(2, "0")}`;
-    const monster = ([name, desc]) => {
-      const cost = 1 + Math.floor(r() * 8);
-      return { type: "Monster", name, desc, cost, atk: Math.max(0, cost + Math.floor(r() * 3) - 1), hp: 1 + Math.floor(r() * (cost + 2)), rarity: pick(RARITIES), art: pick(MONSTER_ART) };
-    };
-    const spell = ([name, desc]) => ({ type: "Spell", name, desc, cost: 1 + Math.floor(r() * 5), rarity: pick(RARITIES), art: pick(MONSTER_ART) });
-    const artifact = ([name, desc]) => ({ type: "Artifact", name, desc, rarity: r() < 0.2 ? "BASE_LEGENDARY" : "BASE_COMMON" });
-    const enchant = ([name, desc]) => ({ type: "Enchantment", name, desc, art: pick(ENCHANT_ART) });
-    const single = (part, p = PREFIX2) => ({ id: id(p), kind: "single", title: part.name, author: pick(AUTHORS), parts: [part] });
-    const posts = [];
-    MONSTERS.forEach((m) => posts.push(single(monster(m))));
-    SPELLS.forEach((s) => posts.push(single(spell(s))));
-    ARTIFACTS.forEach((a) => posts.push(single(artifact(a))));
-    ENCHANTS.forEach((e) => posts.push(single(enchant(e))));
-    [["The Kitchen Crew", 3], ["Snowdin Patrol", 4], ["Garden Party", 2], ["Clockwork Court", 5], ["Lantern Festival", 3], ["Tiny Army", 2], ["Royal Scientists", 4], ["Junk Pile", 3]].forEach(([title, k]) => {
-      const parts = [];
-      for (let i = 0; i < k; i++) parts.push(i === k - 1 && r() < 0.3 ? spell(pick(SPELLS)) : monster(pick(MONSTERS)));
-      if (r() < 0.3) parts.push(enchant(pick(ENCHANTS)));
-      posts.push({ id: id(PREFIX2), kind: "set", title, author: pick(AUTHORS), parts });
-    });
-    posts.forEach((p) => {
-      p.postedAt = now - Math.floor(r() * 75 * DAY);
-      p.approvedAt = p.postedAt + Math.floor(r() * DAY);
-    });
-    posts.sort((a, b) => b.approvedAt - a.approvedAt);
-    const totals = {};
-    posts.forEach((p) => {
-      const up = Math.floor(r() * 40), down = Math.floor(r() * 12);
-      totals[p.id] = [up, down];
-    });
-    const THEMES = [
-      ["Heart of the Underground", "Make a card about a place in the Underground."],
-      ["One-Cost Wonders", "Cards that cost exactly 1."],
-      ["Dark World Rejects", "Deltarune monsters that never made it into the game."],
-      ["Artifact Swap", "A new artifact for any soul."]
-    ];
-    const archived = THEMES.map(([title, rules], i) => {
-      const closesAt = now - (14 + i * 30) * DAY;
-      const entries2 = [];
-      const count = 9 + Math.floor(r() * 7);
-      for (let j = 0; j < count; j++) {
-        const e = r() < 0.2 ? { ...single(artifact(pick(ARTIFACTS)), "zzc"), kind: "single" } : single(monster(pick(MONSTERS)), "zzc");
-        e.postedAt = closesAt - Math.floor(r() * 20 * DAY);
-        entries2.push(e);
-      }
-      const scores = {};
-      entries2.forEach((e) => {
-        const nJ = 2 + Math.floor(r() * 3);
-        scores[e.id] = { avg: Math.round((1 + r() * 4) * 4) / 4, n: nJ };
-      });
-      const order = entries2.map((e) => e.id).sort((a, b) => scores[b].avg - scores[a].avg);
-      return {
-        id: `czzs${i}`,
-        title: `${title} (sample)`,
-        rules,
-        closesAt,
-        maxEntries: 3,
-        status: "archived",
-        createdAt: closesAt - 30 * DAY,
-        archivedAt: closesAt + 3 * DAY,
-        entries: entries2,
-        results: { order, scores, manualTop: false }
-      };
-    });
-    const running = [];
-    for (let j = 0; j < 9; j++) {
-      const e = single(monster(pick(MONSTERS)), "zzc");
-      e.postedAt = now - Math.floor(r() * 5 * DAY);
-      running.push(e);
-    }
-    return { posts, totals, archived, running };
-  }
-  var on = false;
-  var data = null;
-  var jsonResponse = (obj) => new Response(JSON.stringify(obj), { status: 200, headers: { "Content-Type": "application/json" } });
-  function initSamples({ gallery: gallery2, toast: toast2 }) {
-    try {
-      on = GM_getValue(KEY2, "1") === "1";
-    } catch (e) {
-      on = true;
-    }
-    data = build();
-    const realFetch = window.fetch.bind(window);
-    window.fetch = async (input, init = {}) => {
-      const url = typeof input === "string" ? input : input.url;
-      const method = (init.method || "GET").toUpperCase();
-      if (!on) return realFetch(input, init);
-      const path = url.split("?")[0];
-      if (method === "POST" && /\/v1\/votes$/.test(path)) {
-        let body = {};
-        try {
-          body = JSON.parse(init.body || "{}");
-        } catch (e) {
-        }
-        const votes = body.votes || {};
-        const real = Object.fromEntries(Object.entries(votes).filter(([id]) => !isSample(id)));
-        if (!Object.keys(real).length) return jsonResponse({ ok: true });
-        return realFetch(input, { ...init, body: JSON.stringify({ ...body, votes: real }) });
-      }
-      if (method !== "GET") return realFetch(input, init);
-      const merge = async (fn) => {
-        const res = await realFetch(input, init);
-        let obj = null;
-        try {
-          obj = res.ok ? await res.json() : null;
-        } catch (e) {
-          obj = null;
-        }
-        return jsonResponse(fn(obj || {}));
-      };
-      if (path === GALLERY_RAW + "index.json") return merge((o) => ({ format: 1, ...o, posts: (o.posts || []).concat(data.posts) }));
-      if (path === GALLERY_RAW + "contests.json") return merge((o) => {
-        const list = (o.contests || []).map((c) => c.status === "archived" ? c : { ...c, entries: (c.entries || []).concat(data.running) });
-        return { format: 1, ...o, contests: list.concat(data.archived) };
-      });
-      if (/\/v1\/totals$/.test(path)) return merge((o) => ({ ...o, totals: { ...o.totals || {}, ...data.totals } }));
-      if (/\/v1\/contests$/.test(path)) return merge((o) => {
-        const list = (o.contests || []).map((c) => c.status === "archived" ? c : { ...c, entries: (c.entries || 0) + data.running.length });
-        return { ...o, contests: list.concat(data.archived.map(({ entries: entries2, results, ...c }) => ({ ...c, entries: entries2.length }))) };
-      });
-      return realFetch(input, init);
-    };
-    const sw = h("button", { type: "button", class: "wz-cm-btn wz-site-samples", title: "Dev builds only: made-up entries mixed in, so layouts can be judged. Never sent anywhere." });
-    const draw = () => {
-      sw.textContent = on ? "Samples: on" : "Samples: off";
-      sw.classList.toggle("wz-gl-on", on);
-    };
-    sw.addEventListener("click", () => {
-      on = !on;
-      GM_setValue(KEY2, on ? "1" : "0");
-      draw();
-      toast2(on ? "Sample entries on. Reloading\u2026" : "Sample entries off. Reloading\u2026");
-      setTimeout(() => location.reload(), 600);
-    });
-    draw();
-    const help = document.querySelector(".wz-site-help-btn");
-    if (help) help.before(sw);
-  }
 
   // src/main.js
   var VIEWS = [["editor", "Editor", "\u270E"], ["browse", "Browse", "\u25A4"], ["contest", "Contest", "\u2605"], ["submit", "Submit", "\u2B06"], ["review", "Review", "\u2713"]];
@@ -3855,12 +3666,6 @@ a { color: #8ec5ff; }
         if (f.status === "loading") f.status = "ready";
         updateEditorNote();
       });
-      if (key === "feildmaster") setTimeout(() => {
-        if (!f.helper) {
-          f.silent = true;
-          updateEditorNote();
-        }
-      }, 12e3);
       editorHost.appendChild(el);
     }
     Object.entries(frames).forEach(([k, f]) => {
@@ -3874,9 +3679,9 @@ a { color: #8ec5ff; }
     editorNote.replaceChildren();
     editorNote.hidden = true;
     if (!f || editorKey !== "feildmaster") return;
-    if (f.status === "broken" || f.silent && !f.helper) {
+    if (f.status === "broken") {
       editorNote.append(
-        h("span", { text: f.status === "broken" ? "feildmaster's editor didn't start inside this page." : "If the editor stays black, open it on its own site instead." }),
+        h("span", { text: "feildmaster's editor didn't start inside this page." }),
         button("Open its site \u2197", () => window.open(EDITORS.feildmaster.url, "_blank", "noopener"))
       );
       editorNote.hidden = false;
@@ -3966,9 +3771,9 @@ a { color: #8ec5ff; }
       else if (e && e.code === "not_admin") forgetKey("Your gallery key was revoked, so it was removed.");
     });
   }
-  initSamples({ gallery, toast });
   checkFrameImages();
   go(location.hash.slice(1) || "browse", { replace: true });
   gallery.opened();
   recheckKey();
+  GM_deleteValue("wizascript.site.samples");
 })();

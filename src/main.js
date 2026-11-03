@@ -21,7 +21,6 @@ import { h, button } from "@wz/card-maker/gallery/dom.js";
 import { EDITORS, FRAME_MESSAGE } from "@wz/card-maker/editors.js";
 import { linkSteps } from "./link-steps.js";
 import { SITE_CSS } from "./style.js";
-import { initSamples } from "./samples.js"; // dev builds only: remove with samples.js
 
 const VIEWS = [["editor", "Editor", "✎"], ["browse", "Browse", "▤"], ["contest", "Contest", "★"], ["submit", "Submit", "⬆"], ["review", "Review", "✓"]];
 const REVIEW_KEY = "wizascript.cardMaker.galleryReview";
@@ -184,9 +183,6 @@ function showEditor(key) {
     const el = h("iframe", { src: EDITORS[key].url, title: EDITORS[key].label, allow: "clipboard-write" });
     const f = frames[key] = { el, status: "loading", helper: false };
     el.addEventListener("load", () => { if (f.status === "loading") f.status = "ready"; updateEditorNote(); });
-    // feildmaster's editor stopped inside frames before his fix (Nov 2026).
-    // Without Wizascript nothing reports in, so offer his site if it looks stuck.
-    if (key === "feildmaster") setTimeout(() => { if (!f.helper) { f.silent = true; updateEditorNote(); } }, 12000);
     editorHost.appendChild(el);
   }
   Object.entries(frames).forEach(([k, f]) => { f.el.hidden = k !== key; });
@@ -198,8 +194,9 @@ function updateEditorNote() {
   editorNote.replaceChildren();
   editorNote.hidden = true;
   if (!f || editorKey !== "feildmaster") return;
-  if (f.status === "broken" || (f.silent && !f.helper)) {
-    editorNote.append(h("span", { text: f.status === "broken" ? "feildmaster's editor didn't start inside this page." : "If the editor stays black, open it on its own site instead." }),
+  // Only Wizascript's helper inside the editor can tell (frame.js), as in the Card Maker.
+  if (f.status === "broken") {
+    editorNote.append(h("span", { text: "feildmaster's editor didn't start inside this page." }),
       button("Open its site ↗", () => window.open(EDITORS.feildmaster.url, "_blank", "noopener")));
     editorNote.hidden = false;
   }
@@ -289,8 +286,9 @@ function recheckKey() {
   });
 }
 
-initSamples({ gallery, toast });
 checkFrameImages();
 go(location.hash.slice(1) || "browse", { replace: true });
 gallery.opened();
 recheckKey();
+// The dev builds' Samples switch (removed for 1.0.0) left a value behind.
+GM_deleteValue("wizascript.site.samples");
