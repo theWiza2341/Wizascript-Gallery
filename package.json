@@ -1,0 +1,13 @@
+{
+  "name": "wizascript-gallery",
+  "version": "0.1.0-dev1",
+  "private": true,
+  "description": "The Wizascript Card Gallery as a website (GitHub Pages).",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0"
+  }
+}
