@@ -1,4 +1,4 @@
-// Wizascript Card Gallery website 0.1.0-dev3 (gallery code from Wizascript 1.7.2). Built by build.mjs from src/; edit src/, not this file.
+// Wizascript Card Gallery website 0.1.0-dev3 (gallery code from Wizascript 1.7.3). Built by build.mjs from src/; edit src/, not this file.
 (() => {
   // src/setup.js
   var PREFIX = "wzg:";
@@ -910,7 +910,9 @@
   var getHealth = () => call("GET", "/v1/health");
   var admin = (method, path, key, body) => call(method, path, { body, adminKey: key });
   var reviewWhoami = (key) => admin("GET", "/v1/admin/whoami", key);
-  var reviewLog = (key) => admin("GET", "/v1/admin/log", key);
+  var reviewLog = (key, only) => admin("GET", "/v1/admin/log" + (only ? `?only=${encodeURIComponent(only)}` : ""), key);
+  var reviewUndo = (key, n) => admin("POST", "/v1/admin/undo", key, { n });
+  var reviewContext = (key, id) => admin("GET", `/v1/admin/context?id=${encodeURIComponent(id)}`, key);
   var reviewersList = (key) => admin("GET", "/v1/admin/reviewers", key);
   var reviewerAdd = (key, name) => admin("POST", "/v1/admin/reviewers/add", key, { name });
   var reviewerRevoke = (key, id) => admin("POST", "/v1/admin/reviewers/revoke", key, { id });
@@ -1050,6 +1052,65 @@
       pending: () => ({ ...queue })
     };
   }
+  var GUIDELINES_URL = "https://raw.githubusercontent.com/theWiza2341/Wizascript/sounds/gallery-guidelines.md";
+  var GUIDE_KEY = "wizascript.cardMaker.guidelines";
+  var GUIDE_TTL = 60 * 60 * 1e3;
+  var DEFAULT_GUIDELINES = `# Gallery guidelines
+- **Explain it.** Using a custom keyword? Upload it as a set that includes its description. Existing UC cards and artifacts can just be named.
+- **Keep it codable.** Effects that would be very hard to build in UC (multi-selects, aura keywords) are usually turned down. Judged case by case.
+- **New ideas, not number tweaks.** No +1/-1 buffs or nerfs of existing cards. Reworks and big effect changes are fine.
+- **UT, UTY and Deltarune sprites only.** Art from other fangames gets rejected.
+- **Cardifacts rules apply.** Don't post anything you couldn't post in the channel.`;
+  function parseGuidelines(text) {
+    const out = { title: "", intro: [], rules: [] };
+    String(text || "").split(/\r?\n/).forEach((raw) => {
+      const line = raw.trim();
+      if (!line) return;
+      if (/^#\s+/.test(line)) {
+        if (!out.title) out.title = line.replace(/^#+\s+/, "");
+        return;
+      }
+      if (/^[-*]\s+/.test(line)) out.rules.push(line.replace(/^[-*]\s+/, ""));
+      else if (out.rules.length) out.rules[out.rules.length - 1] += " " + line;
+      else out.intro.push(line);
+    });
+    return out;
+  }
+  function cachedGuidelines() {
+    try {
+      const c = JSON.parse(GM_getValue(GUIDE_KEY, "null"));
+      return c && typeof c.text === "string" ? c : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function getGuidelines() {
+    const c = cachedGuidelines();
+    if (c && Date.now() - c.at < GUIDE_TTL) return Promise.resolve(c.text);
+    return new Promise((resolve) => {
+      const fallback = () => resolve(c ? c.text : DEFAULT_GUIDELINES);
+      try {
+        GM_xmlhttpRequest({
+          method: "GET",
+          url: GUIDELINES_URL + "?t=" + Math.floor(Date.now() / 6e4),
+          timeout: 8e3,
+          onload: (r) => {
+            const text = r.status === 200 ? String(r.responseText || "") : "";
+            if (!parseGuidelines(text).rules.length) return fallback();
+            try {
+              GM_setValue(GUIDE_KEY, JSON.stringify({ at: Date.now(), text }));
+            } catch (e) {
+            }
+            resolve(text);
+          },
+          onerror: fallback,
+          ontimeout: fallback
+        });
+      } catch (e) {
+        fallback();
+      }
+    });
+  }
 
   // ../wizascript/packages/card-maker/gallery/browse.js
   var LISTS = [["new", "Newest"], ["week", "This Week"], ["month", "This Month"], ["all", "All Time"]];
@@ -1127,6 +1188,7 @@
         parts: p.parts,
         author: p.author,
         status: "approved",
+        ...p.contest ? { contest: p.contest } : {},
         mine: !!account && p.author === account,
         days: days(p.approvedAt || p.postedAt),
         vote,
@@ -1337,9 +1399,16 @@
           h("button", { type: "button", class: `wz-gl-vote down${e.vote === -1 ? " on" : ""}`, title: "Dislike", text: "\u25BC", onclick: () => vote(-1) })
         ] : null,
         ctx.onRemove && e.status === "approved" ? removeButton(ctx, e) : null,
-        ctx.onDelete && e.mine && e.status === "rejected" ? removeButton(ctx, e, { label: "Delete", confirm: "Delete for good?", title: "Delete this post: it wasn't approved, so it's only taking up space", run: ctx.onDelete }) : null
+        ctx.onDelete && e.mine ? ownButton(ctx, e) : null
       )
     );
+  }
+  function ownButton(ctx, e) {
+    const run = ctx.onDelete;
+    if (e.status === "pending") return removeButton(ctx, e, { label: "Cancel", confirm: "Cancel upload?", title: "Take this upload back before it's reviewed", run });
+    if (e.status === "approved" && !e.contest) return removeButton(ctx, e, { label: "Delete", confirm: "Delete for everyone?", title: "Take your post out of the gallery (its votes go with it)", run });
+    if (e.status === "rejected") return removeButton(ctx, e, { label: "Delete", confirm: "Delete for good?", title: "Delete this post: it wasn't approved, so it's only taking up space", run });
+    return null;
   }
   function pagedGrid(items, { state: state2, wheelPages = () => true, onPage, empty = "* Nothing here yet." }) {
     const area = h("div", { class: "wz-gl-pagearea" });
@@ -2077,6 +2146,21 @@
 .wz-gl-revlist { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; max-height: 360px; overflow: auto; }
 .wz-gl-rev { border: 1px solid #444; background: #111; padding: 4px 6px; }
 .wz-gl-revtabs { margin-bottom: 8px; }
+.wz-gl-ctx { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #444; font-size: 13px; }
+.wz-gl-ctxhead { display: block; background: none; border: 0; color: #ddd; cursor: pointer; font: 13px Arial, sans-serif; padding: 0; text-align: left; }
+.wz-gl-ctxhead:hover b { text-decoration: underline; }
+.wz-gl-ctxsame { color: #ffb44a; font-weight: bold; }
+.wz-gl-ctxlist { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.wz-gl-ctxitem { border: 1px solid #333; background: #0b0b0b; padding: 6px; max-width: 100%; }
+.wz-gl-ctxitem.same { border-color: #ffb44a; }
+.wz-gl-ctxitem.gone .wz-gl-revcards { opacity: .75; }
+.wz-gl-ctxmeta { font-size: 12px; margin-bottom: 4px; }
+.wz-gl-loglist .undone { opacity: .55; }
+.wz-gl-loglist .wz-gl-remove { margin-left: 8px; }
+.wz-gl-guide { margin: 0 0 10px; padding: 8px 12px; border: 2px solid #4aa3df; background: #0c1620; font-size: 13px; line-height: 1.45; max-width: 980px; }
+.wz-gl-guide ul { margin: 4px 0 0; padding-left: 20px; }
+.wz-gl-guide li { margin: 3px 0; }
+.wz-gl-guide .head { display: flex; align-items: center; gap: 8px; }
 .wz-gl-revlog { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .wz-gl-newkey { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; border-color: #ff0; }
 .wz-gl-key { flex: 1; min-width: 0; font-family: monospace; }
@@ -2131,6 +2215,7 @@ ${CONTEST_CSS}
       delete draft2.proto;
       saveDraft();
     }
+    draft2.gone = Object.fromEntries(Object.entries(draft2.gone || {}).filter(([, at]) => Date.now() - at < 30 * 6e4));
     let viewAs = "";
     const listeners2 = [];
     const notify = () => listeners2.forEach((f) => f());
@@ -2167,12 +2252,15 @@ ${CONTEST_CSS}
       who: null,
       section: "uploads",
       log: null,
+      logOnly: "",
       reviewers: null,
       newKey: null,
       newName: "",
       newRole: "reviewer",
       adding: false,
-      sectionError: ""
+      sectionError: "",
+      ctx: {},
+      ctxOpen: {}
     });
     let rev = blankRev();
     const realRole = () => rev.who ? rev.who.role : null;
@@ -2185,6 +2273,7 @@ ${CONTEST_CSS}
       rev.loading = true;
       try {
         if (!rev.who) rev.who = await reviewWhoami(key);
+        if (force) rev.ctx = {};
         if (realRole() === "judge") {
           rev.at = Date.now();
           rev.error = "";
@@ -2268,11 +2357,75 @@ ${CONTEST_CSS}
             p.kind === "set" ? h("div", { class: "wz-gl-sethead" }, h("div", { class: "wz-gl-setname", text: post.title })) : null,
             h("div", { class: "wz-gl-row" }, post.parts.map((c) => hoverable(h("div", { class: "wz-gl-zoom" }, tile(c)), c, null)))
           ) : h("p", { class: "wz-gl-note", text: "Loading its cards\u2026" }),
-          h("div", { class: "wz-gl-bar wz-gl-revactions" }, approveBtn, rejectBtn, reason)
+          h("div", { class: "wz-gl-bar wz-gl-revactions" }, approveBtn, rejectBtn, reason),
+          contextBox(p, post)
         );
       };
       const note = h("p", { class: "wz-gl-note", text: "Each upload is shown exactly as it will look in Browse. Approving adds it to the gallery for everyone (contest entries: to the contest)." });
       return h("div", {}, head, note, h("div", { class: "wz-gl-revposts" }, list.map(one)));
+    }
+    const CTX_LABEL = { approved: "in the gallery", pending: "waiting", rejected: "rejected", removed: "taken down" };
+    const CTX_WAS = { approved: "it was in the gallery", pending: "it was waiting", rejected: "it was rejected", removed: "it was taken down" };
+    const daysAgo2 = (t) => t ? Math.max(0, Math.floor((Date.now() - t) / 864e5)) : 0;
+    const nameKey = (x) => String(x || "").trim().toLowerCase();
+    function loadContext(id) {
+      if (rev.ctx[id]) return;
+      rev.ctx[id] = { loading: true };
+      reviewContext(reviewerKey2(), id).then((d) => {
+        rev.ctx[id] = { data: d || { posts: [] } };
+      }, (e) => {
+        rev.ctx[id] = { error: errText(e) };
+      }).then(() => {
+        if (open && tab === "review") render();
+      });
+    }
+    function contextBox(p, post) {
+      loadContext(p.id);
+      const c = rev.ctx[p.id];
+      if (!c || c.loading) return h("div", { class: "wz-gl-ctx dim", text: "Looking for their other posts\u2026" });
+      if (c.error) return h("div", { class: "wz-gl-ctx wz-gl-issues", text: `Their other posts couldn't be loaded: ${c.error}` });
+      const d = c.data;
+      const list = d.posts || [];
+      const where = d.contest ? `in ${d.contest.title || "this contest"}` : "in the gallery";
+      const alts = d.accounts && d.accounts.length > 1 ? ` Accounts: ${d.accounts.join(", ")}.` : "";
+      if (!list.length) return h("div", { class: "wz-gl-ctx dim", text: `No other posts ${where}.${alts}` });
+      const names = new Set([nameKey(p.title), ...(post && post.parts || []).map((x) => nameKey(x.name))].filter(Boolean));
+      const same = (o) => names.has(nameKey(o.title)) || (o.parts || []).some((x) => names.has(nameKey(x.name)));
+      const nSame = list.filter(same).length;
+      const counts = {};
+      list.forEach((o) => {
+        counts[o.status] = (counts[o.status] || 0) + 1;
+      });
+      const summary = Object.entries(counts).map(([k, n]) => `${n} ${k === "deleted" ? "deleted" : CTX_LABEL[k] || k}`).join(", ");
+      const isOpen = rev.ctxOpen[p.id] !== void 0 ? rev.ctxOpen[p.id] : nSame > 0;
+      const head = h(
+        "button",
+        { type: "button", class: "wz-gl-ctxhead", title: "Everything this player (and any alt that shared their install) has posted here", onclick: () => {
+          rev.ctxOpen[p.id] = !isOpen;
+          render();
+        } },
+        h("b", { text: `${isOpen ? "\u25BE" : "\u25B8"} Their other posts ${where}: ${list.length}` }),
+        nSame ? h("span", { class: "wz-gl-ctxsame", text: ` \xB7 ${nSame} with a matching name` }) : null,
+        h("span", { class: "dim", text: ` (${summary}).${alts}` })
+      );
+      if (!isOpen) return h("div", { class: "wz-gl-ctx" }, head);
+      const items = list.map((o) => {
+        const shown = o.status === "approved" && o.parts ? withArt(o) : o;
+        const label = o.status === "deleted" ? `deleted by them (${CTX_WAS[o.deletedFrom] || "earlier"})` : CTX_LABEL[o.status] || o.status;
+        const info = { author: o.author, days: daysAgo2(o.postedAt), status: o.status === "rejected" ? "rejected" : "approved", reason: o.reason };
+        return h(
+          "div",
+          { class: `wz-gl-ctxitem${same(o) ? " same" : ""}${o.status === "approved" ? "" : " gone"}` },
+          h(
+            "div",
+            { class: "wz-gl-ctxmeta" },
+            h("b", { text: o.title || "(no name)" }),
+            h("span", { class: "dim", text: ` \xB7 ${label}${o.reason ? `: ${o.reason}` : ""} \xB7 #${o.id}${o.author !== d.author ? ` \xB7 ${o.author}` : ""}` })
+          ),
+          shown.parts ? h("div", { class: "wz-gl-revcards" }, shown.parts.map((x) => hoverable(h("div", { class: "wz-gl-zoom" }, tile(x)), x, info))) : h("div", { class: "dim", text: "Its cards weren't kept." })
+        );
+      });
+      return h("div", { class: "wz-gl-ctx open" }, head, h("div", { class: "wz-gl-ctxlist" }, items));
     }
     function reviewView() {
       if (!reviewerKey2()) return h("p", { class: "wz-gl-note", text: "Review is off." });
@@ -2327,12 +2480,28 @@ ${CONTEST_CSS}
     };
     async function loadLog() {
       try {
-        rev.log = (await reviewLog(reviewerKey2())).log;
+        rev.log = (await reviewLog(reviewerKey2(), realRole() === "owner" ? rev.logOnly : "")).log;
         rev.sectionError = "";
       } catch (e) {
         rev.sectionError = errText(e);
       }
       if (open && tab === "review") render();
+    }
+    async function undoEntry(l) {
+      try {
+        const r = await reviewUndo(reviewerKey2(), l.n);
+        say(l.action === "score" ? `Undid ${l.who}'s score on "${l.title || ""}".` : `Undid "${l.title || ""}" (${ACTIONS[l.action] || l.action} by ${l.who}). It's ${r && r.status === "approved" ? "back in the gallery" : "waiting for review again"}.`);
+        if (l.post) delete draft2.gone[l.post];
+        gal.at = 0;
+        if (l.action === "score") contests.loadJudging(true);
+        else {
+          refreshReview(true);
+          contests.refresh(true);
+        }
+      } catch (err) {
+        say(`Couldn't undo it: ${errText(err)}`);
+      }
+      loadLog();
     }
     async function loadReviewers() {
       try {
@@ -2353,22 +2522,43 @@ ${CONTEST_CSS}
       contest_create: "started contest",
       contest_edit: "edited contest",
       contest_archive: "published the results of",
-      contest_delete: "deleted contest"
+      contest_delete: "deleted contest",
+      undo: "undid",
+      undo_score: "undid a score on",
+      score: "scored"
     };
+    function logLine(l) {
+      const canUndo = realRole() === "owner" && !viewAs && l.undo && l.undo.ok;
+      const what = l.action === "score" && !l.detail ? "cleared their score on" : ACTIONS[l.action] || l.action;
+      return h(
+        "div",
+        { class: l.undoneAt ? "undone" : "" },
+        h("b", { text: l.who }),
+        ` ${what} `,
+        l.post ? h("span", { text: `"${l.title || ""}" #${l.post}` }) : h("b", { text: l.detail || "" }),
+        l.action === "score" && l.detail ? [" ", h("b", { text: l.detail })] : null,
+        l.action === "score" && l.prev ? h("span", { class: "dim", text: ` (was ${l.prev})` }) : null,
+        l.post && l.detail && l.action !== "score" ? h("span", { class: "dim", text: ` (${l.detail})` }) : null,
+        h("span", { class: "dim", text: ` \xB7 ${ago(l.at)}` }),
+        l.undoneAt ? h("span", { class: "dim", text: ` \xB7 undone by ${l.undoneBy || "the owner"}` }) : null,
+        canUndo ? removeButton({ rerender: render }, l, { label: "Undo", confirm: "Undo it?", title: l.action === "approve" ? "Take it out of the gallery and put it back in Uploads" : l.action === "reject" ? "Put it back in Uploads" : l.action === "remove" ? "Put it back where it was" : "Give back the judge's score before this", run: undoEntry }) : null
+      );
+    }
     function logView() {
-      const head = h("div", { class: "wz-gl-bar" }, h("b", { text: "Recent review actions" }), h("span", { class: "wz-gl-grow" }), button("\u21BB Refresh", loadLog));
+      const owner = realRole() === "owner" && !viewAs;
+      const pick = (k) => {
+        rev.logOnly = k;
+        rev.log = null;
+        render();
+        loadLog();
+      };
+      const filters = owner ? h("span", { class: "wz-gl-sizes" }, [["", "All"], ["decisions", "Decisions"], ["scores", "Judge scores"]].map(([k, label]) => button(label, () => pick(k), { cls: (rev.logOnly || "") === k ? "wz-gl-on" : "", title: k === "scores" ? "Every score judges gave (only you see these)" : "" }))) : null;
+      const head = h("div", { class: "wz-gl-bar" }, h("b", { text: "Recent review actions" }), filters, h("span", { class: "wz-gl-grow" }), button("\u21BB Refresh", loadLog));
+      const note = owner ? h("p", { class: "wz-gl-note", text: "You can undo approvals, rejections, removals and judge scores: only the latest one for each post, and not after its author deleted it." }) : null;
       if (rev.sectionError) return h("div", {}, head, h("div", { class: "wz-gl-issues", text: rev.sectionError }));
       if (!rev.log) return h("div", {}, head, h("p", { class: "wz-gl-note", text: "Loading\u2026" }));
       if (!rev.log.length) return h("div", {}, head, h("p", { class: "wz-gl-note", text: "Nothing yet." }));
-      return h("div", {}, head, h("div", { class: "wz-gl-revlog" }, rev.log.map((l) => h(
-        "div",
-        {},
-        h("b", { text: l.who }),
-        ` ${ACTIONS[l.action] || l.action} `,
-        l.post ? h("span", { text: `"${l.title || ""}" #${l.post}` }) : h("b", { text: l.detail || "" }),
-        l.post && l.detail ? h("span", { class: "dim", text: ` (${l.detail})` }) : null,
-        h("span", { class: "dim", text: ` \xB7 ${ago(l.at)}` })
-      ))));
+      return h("div", {}, head, note, h("div", { class: "wz-gl-revlog wz-gl-loglist" }, rev.log.map(logLine)));
     }
     async function addReviewer() {
       const name = rev.newName.trim();
@@ -2466,19 +2656,24 @@ ${CONTEST_CSS}
     }
     async function deleteMine(e) {
       try {
-        await deleteOwnPost(e.id);
+        const r = await deleteOwnPost(e.id);
+        const was = r && r.was || e.status;
         const wasEntry = acct.posts.some((p) => p.id === e.id && p.contest && (p.status === "pending" || p.status === "approved"));
         delete draft2.uploads[e.id];
+        if (was === "approved") {
+          draft2.gone[e.id] = Date.now();
+          gal.approved = gal.approved.filter((p) => p.id !== e.id);
+        }
         saveDraft();
         acct.posts = acct.posts.filter((p) => p.id !== e.id);
-        say(wasEntry ? `Withdrew "${e.title}". Its slot is free again.` : `Deleted "${e.title}".`);
+        say(wasEntry ? `Withdrew "${e.title}". Its slot is free again.` : was === "pending" ? `Cancelled "${e.title}".` : was === "approved" ? `Deleted "${e.title}" from the gallery.` : `Deleted "${e.title}".`);
         if (wasEntry) {
           refreshMe(true);
           contests.refresh(true);
         }
         render();
       } catch (err) {
-        say(`Couldn't delete it: ${errText(err)}`);
+        say(`Couldn't take it back: ${errText(err)}`);
         render();
       }
     }
@@ -2486,6 +2681,8 @@ ${CONTEST_CSS}
       try {
         await reviewRemove(reviewerKey2(), e.id);
         say(`Removed ${e.id} from the gallery.`);
+        draft2.gone[e.id] = Date.now();
+        saveDraft();
         gal.approved = gal.approved.filter((p) => p.id !== e.id);
         render();
         refreshGallery(true);
@@ -2865,6 +3062,40 @@ ${CONTEST_CSS}
       lastUpload = null;
       render();
     };
+    const guide = { text: null, loading: false };
+    function loadGuide() {
+      if (guide.text || guide.loading) return;
+      guide.loading = true;
+      getGuidelines().then((t) => {
+        guide.text = t;
+        guide.loading = false;
+        if (open && tab === "submit") render();
+      });
+    }
+    const rich = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+    const setGuide = (show) => {
+      draft2.hideGuide = !show;
+      saveDraft();
+      render();
+    };
+    function guideBox() {
+      loadGuide();
+      if (draft2.hideGuide) return null;
+      const g = parseGuidelines(guide.text || DEFAULT_GUIDELINES);
+      return h(
+        "div",
+        { class: "wz-gl-guide" },
+        h(
+          "div",
+          { class: "head" },
+          h("b", { text: g.title || "Gallery guidelines" }),
+          h("span", { class: "wz-gl-grow" }),
+          button("Hide", () => setGuide(false), { cls: "wz-gl-small", title: "Hide the guidelines (Guidelines, above, shows them again)" })
+        ),
+        g.intro.map((t) => h("div", { html: rich(t) })),
+        h("ul", {}, g.rules.map((t) => h("li", { html: rich(t) })))
+      );
+    }
     function submitView() {
       const sel = draft2.parts.filter((p) => p.sel);
       const bar = h(
@@ -2889,6 +3120,7 @@ ${CONTEST_CSS}
           });
           changed();
         }),
+        draft2.hideGuide ? button("Guidelines", () => setGuide(true), { title: "What gets accepted into the gallery" }) : null,
         h("span", { class: "wz-gl-grow" }),
         removeAllButton()
       );
@@ -2896,7 +3128,7 @@ ${CONTEST_CSS}
       if (sel.length > SET_CAP) bar.children[2].title = `Sets can have up to ${SET_CAP} cards`;
       bar.children[3].disabled = !sel.some((p) => p.group);
       const note = h("p", { class: "wz-gl-note", text: draft2.parts.length ? "Click parts to select them, then Link selected to make a set. Anything not in a set is submitted on its own." : submitNote || "Make cards in the editor, then Read from this editor and tick the ones to add. Files work too." });
-      return h("div", {}, bar, note, lastUpload ? uploadedBox() : null, draft2.parts.length ? uploadBox() : null, read && !reviewing ? picker() : null, setsRow(), tray());
+      return h("div", {}, guideBox(), bar, note, lastUpload ? uploadedBox() : null, draft2.parts.length ? uploadBox() : null, read && !reviewing ? picker() : null, setsRow(), tray());
     }
     let removeArmed = false;
     function removeAllButton() {
@@ -3148,6 +3380,15 @@ ${CONTEST_CSS}
         issues.length ? h("div", { class: "wz-gl-issues" }, issues.map((t) => h("div", { text: t }))) : null,
         h(
           "div",
+          { class: "wz-gl-note", style: { margin: "6px 0 0" } },
+          "Before uploading, check it follows the guidelines. ",
+          draft2.hideGuide ? button("Show guidelines", () => {
+            setGuide(true);
+            panel.scrollTop = 0;
+          }, { cls: "wz-gl-small" }) : h("span", { text: "(They're at the top of this page.)" })
+        ),
+        h(
+          "div",
           { class: "wz-gl-bar wz-gl-revfoot" },
           h("span", { class: "wz-gl-note", style: { margin: 0 }, text: into ? "Each set and single card is one entry, checked against the contest's rules. Approved entries show in the Contest tab, and join the gallery when the results are out." : "Each set and single card is sent as its own entry, for approval. Approved ones show in Browse for everyone." }),
           h("span", { class: "wz-gl-grow" }),
@@ -3249,7 +3490,7 @@ ${CONTEST_CSS}
     function browseTab() {
       const own = acct.posts.filter((p) => !p.contest && (p.status === "pending" || p.status === "rejected") && draft2.uploads[p.id]).map((p) => ({ id: p.id, status: p.status, reason: p.reason, postedAt: p.postedAt, kind: draft2.uploads[p.id].kind, title: draft2.uploads[p.id].title, parts: draft2.uploads[p.id].parts }));
       acct.posts.filter((p) => !p.contest && p.status === "approved" && draft2.uploads[p.id] && !gal.approved.some((a) => a.id === p.id)).forEach((p) => own.push({ id: p.id, status: "pending", postedAt: p.postedAt, kind: draft2.uploads[p.id].kind, title: draft2.uploads[p.id].title, parts: draft2.uploads[p.id].parts }));
-      const list = allEntries({ approved: gal.approved, own, totals: gal.totals, baseVotes: gal.base, current: currentVotes(), account: acct.account });
+      const list = allEntries({ approved: gal.approved.filter((p) => !draft2.gone[p.id]), own, totals: gal.totals, baseVotes: gal.base, current: currentVotes(), account: acct.account });
       return browseView({
         state: browse,
         wheelPages: () => !wheelPages || wheelPages(),
