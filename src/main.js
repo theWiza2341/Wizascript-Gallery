@@ -227,7 +227,7 @@ gallery = buildGalleryPanel({
   onKeyRejected: (code) => forgetKey(code === "key_expired" ? "Your gallery key has expired, so it was removed." : "Your gallery key was revoked, so it was removed."),
   linkSteps,
   watchLink: true,
-  submitNote: "Make cards in an editor (Editor, in the top bar), download them (UC Editor: the group's .uceditor file; either editor: a card PNG), then Add files…. With Wizascript installed, Read from this editor works too."
+  submitNote: "Make cards in an editor (Editor, in the top bar) and save them to a file: UC Editor's group download (.uceditor), or feildmaster's Export → Download (.json). Then Add files…. With Wizascript installed, Read from this editor works too."
 });
 gallery.el.classList.add("wz-site-panel");
 main.appendChild(gallery.el);

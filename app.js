@@ -87,6 +87,320 @@
     return h("button", { type: "button", class: `wz-cm-btn${primary ? " wz-gl-primary" : ""}${cls ? " " + cls : ""}`, title, onclick }, label);
   }
 
+  // ../wizascript/packages/card-maker/gallery/artpic.js
+  var ONE = 176;
+  var TWO = 176 * 2 + 3;
+  var H = 246;
+  var BORDER = 2;
+  var PAD = 8;
+  var cache = /* @__PURE__ */ new Map();
+  var ready = /* @__PURE__ */ new Map();
+  var listeners = [];
+  var notifyTimer = 0;
+  function onArtPicsChange(f) {
+    listeners.push(f);
+  }
+  function changed() {
+    clearTimeout(notifyTimer);
+    notifyTimer = setTimeout(() => listeners.forEach((f) => {
+      try {
+        f();
+      } catch (e) {
+      }
+    }), 30);
+  }
+  function load(src) {
+    return new Promise((ok) => {
+      const img = new Image();
+      if (!/^(data|blob):/.test(src)) img.crossOrigin = "anonymous";
+      img.onload = () => ok(img);
+      img.onerror = () => ok(null);
+      img.src = src;
+    });
+  }
+  function stripPieces(px, w, h2) {
+    const at = (x, y) => (y * w + x) * 4;
+    const counts = /* @__PURE__ */ new Map();
+    for (let i = 0; i < px.length; i += 16) {
+      const k = px[i] >> 4 << 8 | px[i + 1] >> 4 << 4 | px[i + 2] >> 4;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    let bk = 0, best = -1;
+    for (const [k, n] of counts) if (n > best) {
+      best = n;
+      bk = k;
+    }
+    let bg = [(bk >> 8 & 15) * 16 + 8, (bk >> 4 & 15) * 16 + 8, (bk & 15) * 16 + 8];
+    for (let i = 0; i < px.length; i += 16) {
+      if ((px[i] >> 4 << 8 | px[i + 1] >> 4 << 4 | px[i + 2] >> 4) === bk) {
+        bg = [px[i], px[i + 1], px[i + 2]];
+        break;
+      }
+    }
+    const ink = new Uint8Array(w * h2);
+    for (let p = 0, i = 0; p < ink.length; p++, i += 4) {
+      if (px[i + 3] >= 40 && Math.abs(px[i] - bg[0]) + Math.abs(px[i + 1] - bg[1]) + Math.abs(px[i + 2] - bg[2]) > 60) ink[p] = 1;
+    }
+    const colShare = (x, y0, y1) => {
+      let n = 0;
+      for (let y = y0; y <= y1; y++) n += ink[y * w + x];
+      return n / (y1 - y0 + 1);
+    };
+    const rowShare = (y, x0, x1) => {
+      let n = 0;
+      for (let x = x0; x <= x1; x++) n += ink[y * w + x];
+      return n / (x1 - x0 + 1);
+    };
+    if (w < 120 || h2 < 20 || w / h2 < 2.2) return null;
+    let l = 0, r = w - 1, t = 0, b = h2 - 1;
+    const midY0 = Math.floor(h2 * 0.2), midY1 = Math.ceil(h2 * 0.8);
+    while (l < 8 && colShare(l, midY0, midY1) > 0.9) l++;
+    while (r > w - 9 && colShare(r, midY0, midY1) > 0.9) r--;
+    while (t < 8 && rowShare(t, l, r) > 0.9) t++;
+    while (b > h2 - 9 && rowShare(b, l, r) > 0.9) b--;
+    if (l === 0 || t === 0) return null;
+    const border = [px[at(0, h2 >> 1)], px[at(0, h2 >> 1) + 1], px[at(0, h2 >> 1) + 2]];
+    const run = (x) => {
+      let best2 = 0, n = 0;
+      for (let y = t; y <= b; y++) {
+        n = ink[y * w + x] ? n + 1 : 0;
+        if (n > best2) best2 = n;
+      }
+      return best2;
+    };
+    const tall = Math.max(16, Math.round((b - t + 1) * 0.6));
+    let dividers = [];
+    for (let x = l + 3; x <= r - 3; x++) {
+      if (run(x) >= tall) {
+        const last = dividers[dividers.length - 1];
+        if (last && x - last[1] <= 1) last[1] = x;
+        else dividers.push([x, x]);
+      }
+    }
+    dividers = dividers.filter(([a, z]) => z - a >= 1);
+    if (!dividers.length || dividers.length > 3) return null;
+    const bounds = [l, ...dividers.flatMap(([a, z]) => [a - 1, z + 1]), r];
+    const trim = (x0, x1) => {
+      let y0 = t, y1 = b;
+      const rowHas = (y) => {
+        for (let x = x0; x <= x1; x++) if (ink[y * w + x]) return true;
+        return false;
+      };
+      const colHas = (x) => {
+        for (let y = y0; y <= y1; y++) if (ink[y * w + x]) return true;
+        return false;
+      };
+      while (y0 < y1 && !rowHas(y0)) y0++;
+      while (y1 > y0 && !rowHas(y1)) y1--;
+      while (x0 < x1 && !colHas(x0)) x0++;
+      while (x1 > x0 && !colHas(x1)) x1--;
+      return x1 - x0 < 2 || y1 - y0 < 2 ? null : { x0, y0, x1, y1 };
+    };
+    const pieces = [];
+    for (let i = 0; i < bounds.length; i += 2) pieces.push(trim(bounds[i], bounds[i + 1]));
+    const desc = pieces.pop();
+    const head = pieces.filter(Boolean);
+    if (!desc || !head.length) return null;
+    return { ink, border, bg, head, desc, lines: textLines(ink, w, desc) };
+  }
+  function textLines(ink, w, box) {
+    const rowHas = (y) => {
+      for (let x = box.x0; x <= box.x1; x++) if (ink[y * w + x]) return true;
+      return false;
+    };
+    const rows = [];
+    let s = -1;
+    for (let y = box.y0; y <= box.y1 + 1; y++) {
+      const on = y <= box.y1 && rowHas(y);
+      if (on && s < 0) s = y;
+      else if (!on && s >= 0) {
+        rows.push([s, y - 1]);
+        s = -1;
+      }
+    }
+    if (!rows.length) return null;
+    const heights = rows.map(([a, z]) => z - a + 1).sort((a, b) => a - b);
+    const lineH = heights[heights.length >> 1];
+    const gap = Math.max(5, Math.round(lineH * 0.38));
+    const lines = rows.map(([y0, y1]) => {
+      const colHas = (x) => {
+        for (let y = y0; y <= y1; y++) if (ink[y * w + x]) return true;
+        return false;
+      };
+      const words = [];
+      let ws = -1, empty = 0;
+      for (let x = box.x0; x <= box.x1 + gap; x++) {
+        if (x <= box.x1 && colHas(x)) {
+          if (ws < 0) ws = x;
+          empty = 0;
+        } else if (ws >= 0 && (++empty >= gap || x > box.x1)) {
+          words.push([ws, x - empty]);
+          ws = -1;
+          empty = 0;
+        }
+      }
+      const ends = /* @__PURE__ */ new Map();
+      for (let x = box.x0; x <= box.x1; x++) {
+        for (let y = y1; y >= y0; y--) if (ink[y * w + x]) {
+          ends.set(y, (ends.get(y) || 0) + 1);
+          break;
+        }
+      }
+      let base = y1, most = 0;
+      for (const [y, n] of ends) if (n > most || n === most && y < base) {
+        most = n;
+        base = y;
+      }
+      return { y0, y1, base, words };
+    });
+    const gaps = [];
+    lines.forEach((ln) => {
+      for (let i = 1; i < ln.words.length; i++) gaps.push(ln.words[i][0] - ln.words[i - 1][1] - 1);
+    });
+    gaps.sort((a, b) => a - b);
+    const space = gaps.length ? gaps[gaps.length >> 1] : gap + 2;
+    lines.forEach((ln, i) => {
+      const next = lines[i + 1];
+      ln.forced = !!next && next.words.length > 0 && ln.words.length > 0 && ln.words[ln.words.length - 1][1] + space + (next.words[0][1] - next.words[0][0] + 1) <= box.x1 - 2;
+    });
+    const pitches = [];
+    for (let i = 1; i < lines.length; i++) pitches.push(lines[i].y0 - lines[i - 1].y0);
+    pitches.sort((a, b) => a - b);
+    return { lines, space, pitch: pitches.length ? pitches[pitches.length >> 1] : lineH + 4 };
+  }
+  function flow(text, width) {
+    const out = [];
+    let x = 0, y = 0;
+    const asc = Math.max(...text.lines.map((ln) => ln.base - ln.y0));
+    const offset = (ln) => asc - (ln.base - ln.y0);
+    const wide = Math.max(...text.lines.flatMap((ln) => ln.words.map(([a, z]) => z - a + 1)), 0);
+    if (wide > width) return null;
+    text.lines.forEach((ln) => {
+      ln.words.forEach(([a, z]) => {
+        const ww = z - a + 1;
+        if (x > 0 && x + text.space + ww > width) {
+          x = 0;
+          y += text.pitch;
+        } else if (x > 0) x += text.space;
+        out.push({ src: [a, z, ln.y0, ln.y1], x, y: y + offset(ln) });
+        x += ww;
+      });
+      if (ln.forced) {
+        x = 0;
+        y += text.pitch;
+      }
+    });
+    if (text.lines[text.lines.length - 1].forced) y -= text.pitch;
+    const bottom = Math.max(0, ...out.map((o) => o.y + o.src[3] - o.src[2] + 1));
+    return { words: out, height: Math.max(bottom, y + text.pitch) };
+  }
+  function layoutStrip(p) {
+    if (!p.lines) return null;
+    for (const tw of [ONE, TWO]) {
+      const inner = tw - 2 * (BORDER + PAD);
+      const heads = [];
+      let x = 0, y = 0, rowH = 0, fits = true;
+      for (const b of p.head) {
+        const bw = b.x1 - b.x0 + 1, bh = b.y1 - b.y0 + 1;
+        if (bw > inner) {
+          fits = false;
+          break;
+        }
+        if (x > 0 && x + 10 + bw > inner) {
+          x = 0;
+          y += rowH + 6;
+          rowH = 0;
+        } else if (x > 0) x += 10;
+        heads.push({ b, x, y });
+        x += bw;
+        rowH = Math.max(rowH, bh);
+      }
+      if (!fits) continue;
+      heads.forEach((hd) => {
+        const rowItems = heads.filter((o) => o.y === hd.y);
+        const tall = Math.max(...rowItems.map((o) => o.b.y1 - o.b.y0 + 1));
+        hd.dy = Math.floor((tall - (hd.b.y1 - hd.b.y0 + 1)) / 2);
+      });
+      const headH = y + rowH;
+      const text = flow(p.lines, inner);
+      if (!text) continue;
+      const need = BORDER + PAD + headH + 9 + text.height + PAD + BORDER;
+      if (tw === ONE && need > H) continue;
+      return { w: tw, h: Math.max(H, need), heads, headH, text };
+    }
+    return null;
+  }
+  function draw(img, p, lay) {
+    const c = document.createElement("canvas");
+    c.width = lay.w;
+    c.height = lay.h;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.fillStyle = `rgb(${p.bg.join(",")})`;
+    g.fillRect(0, 0, lay.w, lay.h);
+    g.fillStyle = `rgb(${p.border.join(",")})`;
+    g.fillRect(0, 0, lay.w, BORDER);
+    g.fillRect(0, lay.h - BORDER, lay.w, BORDER);
+    g.fillRect(0, 0, BORDER, lay.h);
+    g.fillRect(lay.w - BORDER, 0, BORDER, lay.h);
+    const ox = BORDER + PAD, oy = BORDER + PAD;
+    lay.heads.forEach(({ b, x, y, dy }) => {
+      const bw = b.x1 - b.x0 + 1, bh = b.y1 - b.y0 + 1;
+      g.drawImage(img, b.x0, b.y0, bw, bh, ox + x, oy + y + dy, bw, bh);
+    });
+    const ty = oy + lay.headH + 3;
+    g.fillRect(BORDER, ty, lay.w - 2 * BORDER, 1);
+    lay.text.words.forEach(({ src: [x0, x1, y0, y1], x, y }) => {
+      g.drawImage(img, x0, y0, x1 - x0 + 1, y1 - y0 + 1, ox + x, ty + 6 + y, x1 - x0 + 1, y1 - y0 + 1);
+    });
+    return c.toDataURL("image/png");
+  }
+  function restackArtifact(src) {
+    if (!src) return Promise.resolve(null);
+    if (!cache.has(src)) {
+      cache.set(src, load(src).then((img) => {
+        if (!img) return null;
+        const w = img.naturalWidth, h2 = img.naturalHeight;
+        let px;
+        try {
+          const c = document.createElement("canvas");
+          c.width = w;
+          c.height = h2;
+          const g = c.getContext("2d");
+          g.drawImage(img, 0, 0);
+          px = g.getImageData(0, 0, w, h2).data;
+        } catch (e) {
+          return { w, h: h2, url: null };
+        }
+        const pieces = stripPieces(px, w, h2);
+        const lay = pieces && layoutStrip(pieces);
+        return lay ? { url: draw(img, pieces, lay), w: lay.w, h: lay.h, restacked: true } : { w, h: h2, url: null };
+      }).catch(() => null).then((r) => {
+        ready.set(src, r);
+        return r;
+      }));
+    }
+    return cache.get(src);
+  }
+  var plainWidth = (w) => Math.min(w || ONE, w > ONE * 1.15 ? TWO : ONE);
+  function artPicTile(h2, src) {
+    const img = h2("img", { class: "wz-gl-artpic", src, alt: "", style: { width: ONE + "px" } });
+    const apply = (r) => {
+      if (!r) return false;
+      if (r.url) {
+        img.src = r.url;
+        img.style.width = r.w + "px";
+        img.classList.add("wz-gl-restacked");
+      } else img.style.width = plainWidth(r.w) + "px";
+      return true;
+    };
+    if (ready.has(src)) apply(ready.get(src));
+    else restackArtifact(src).then((r) => {
+      if (apply(r)) changed();
+    });
+    return img;
+  }
+
   // ../wizascript/packages/card-maker/gallery/render.js
   var CARD_W = 176;
   var CARD_H = 246;
@@ -136,7 +450,7 @@
     return img;
   }
   function tile(p) {
-    if (p.picture && p.type === "Artifact") return h("img", { class: "wz-gl-artpic", src: p.picture, alt: "" });
+    if (p.picture && p.type === "Artifact") return artPicTile(h, p.picture);
     if (p.picture) return h("div", { class: "wz-gl-card wz-gl-pic" }, h("img", { src: p.picture, alt: "" }));
     if (p.type === "Artifact") {
       const colour = rarityColor(p.rarity);
@@ -315,7 +629,8 @@
 .wz-gl-atk { left: 8px; color: #f0003c; } .wz-gl-hp { left: 128px; color: #0dd000; }
 .wz-gl-rar { left: 76px; top: 213px; width: 24px; height: 24px; z-index: 5; image-rendering: pixelated; }
 .wz-gl-pic img { left: 0; top: 0; width: 176px; height: 246px; }
-.wz-gl-artpic { display: block; width: 176px; height: auto; }
+.wz-gl-artpic { display: block; width: 176px; height: auto; flex: none; }
+.wz-gl-restacked { image-rendering: pixelated; }
 .wz-gl-artifact { width: ${CARD_W}px; height: ${CARD_H}px; border: 2px solid #fff; background: #000; padding: 8px; color: #fff; font-size: 12px; line-height: 1.42857; text-align: left; flex: none; display: flex; flex-direction: column; overflow: hidden; }
 .wz-gl-artifact.wz-gl-wide { width: ${CARD_W * 2 + 3}px; }
 .t-enchant i { display: none !important; }
@@ -327,6 +642,279 @@
 .wz-gl-rarity { flex: none; padding-bottom: 4px; margin-bottom: 5px; border-bottom: 2px solid currentColor; }
 .wz-gl-arttext { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 `;
+
+  // ../wizascript/packages/card-maker/gallery/feild.js
+  var isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v || "");
+  async function feildPart(e, ctx) {
+    if (!e) return null;
+    const base = { name: e.name || "", desc: e.description || "", image: await ctx.image(e.image) };
+    if (!base.image && ctx.why && ctx.why(e.image)) base.artNote = ctx.why(e.image);
+    if (e.type === "text") return { type: "Artifact", ...base, rarity: e.rarity || "COMMON" };
+    if (e.type !== "card") return null;
+    const spell = e.health === void 0 || e.health === null;
+    return {
+      type: spell ? "Spell" : "Monster",
+      ...base,
+      cost: e.cost ?? 0,
+      atk: spell ? null : e.attack ?? 0,
+      hp: spell ? null : e.health ?? 0,
+      soul: e.soul || null,
+      rarity: isUuid(e.rarity) ? null : e.rarity || "COMMON",
+      rarityIcon: isUuid(e.rarity) ? await ctx.image(e.rarity) : null,
+      tribes: await Promise.all((e.tribes || []).filter((t) => t && t !== "none").map(async (t) => ({
+        name: isUuid(t) ? null : t,
+        icon: isUuid(t) ? await ctx.image(t) : await ctx.tribeIcon(t)
+      }))),
+      imageType: "standard"
+    };
+  }
+  async function feildGroups({ el, groupIds, allIds }, ctx, looseName = "Not in a group") {
+    const groups = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const gid of groupIds) {
+      const g = el(gid);
+      if (!g) continue;
+      const parts = [];
+      for (const cid of g.content || []) {
+        seen.add(cid);
+        const p = await feildPart(el(cid), ctx);
+        if (p) parts.push(p);
+      }
+      groups.push({ name: g.name || "Group", parts });
+    }
+    const loose = [];
+    for (const id of allIds) {
+      const e = el(id);
+      if (seen.has(id) || groupIds.includes(id) || !e || e.type === "group") continue;
+      const p = await feildPart(e, ctx);
+      if (p) loose.push(p);
+    }
+    if (loose.length) groups.push({ name: looseName, parts: loose });
+    return groups;
+  }
+
+  // ../wizascript/packages/core/page-window.js
+  function getPageWindow() {
+    return typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+  }
+
+  // ../wizascript/packages/core/uc-report.js
+  var TAG = "WZ";
+  var VERSION = 1;
+  var HEADER = `#${TAG}${VERSION} `;
+  var canOpenVoid = () => typeof getPageWindow().openRoom === "function";
+  function closeDialogs() {
+    const BD = getPageWindow().BootstrapDialog;
+    if (!BD) return false;
+    let any = false;
+    try {
+      if (BD.dialogs) Object.values(BD.dialogs).forEach((d) => {
+        if (d && typeof d.close === "function" && (!d.isOpened || d.isOpened())) {
+          d.close();
+          any = true;
+        }
+      });
+      else if (typeof BD.closeAll === "function") {
+        BD.closeAll();
+        any = true;
+      }
+    } catch (e) {
+    }
+    return any;
+  }
+  function openVoid(message, select) {
+    const w = getPageWindow();
+    if (!canOpenVoid()) return false;
+    const go2 = () => {
+      if (!document.querySelector("#chat-public-0")) w.openRoom(0);
+      let tries = 0;
+      const fill = () => {
+        const input = document.querySelector("#chat-public-0 .chat-text");
+        if (!input) {
+          if (++tries < 40) setTimeout(fill, 100);
+          return;
+        }
+        input.value = message;
+        input.focus();
+        const at = select ? message.indexOf(select) : -1;
+        if (at >= 0) input.setSelectionRange(at, at + select.length);
+        else input.setSelectionRange(message.length, message.length);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      fill();
+    };
+    if (closeDialogs()) setTimeout(go2, 350);
+    else go2();
+    return true;
+  }
+
+  // ../wizascript/packages/core/account.js
+  var DEFAULT_WORKER = "https://wizascript-gallery.thewiza2341.workers.dev";
+  var WORKER_HOSTS = ["wizascript-gallery.thewiza2341.workers.dev"];
+  var SERVER_FILE = "https://raw.githubusercontent.com/theWiza2341/Wizascript/sounds/server.json";
+  var SERVER_KEY = "wizascript.account.server";
+  var SERVER_TTL = 30 * 60 * 1e3;
+  var WORKER_RE = /^https:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.workers\.dev$/i;
+  var isWorkerUrl = (u) => {
+    if (typeof u !== "string") return false;
+    const v = u.replace(/\/+$/, "");
+    return WORKER_RE.test(v) && WORKER_HOSTS.includes(v.slice("https://".length).toLowerCase());
+  };
+  function cachedServer() {
+    try {
+      const c = JSON.parse(GM_getValue(SERVER_KEY, "null"));
+      return c && isWorkerUrl(c.url) ? c : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  var worker = (cachedServer() || {}).url || DEFAULT_WORKER;
+  var checking2 = null;
+  function fetchServer() {
+    return new Promise((resolve) => {
+      const keep = () => resolve(worker);
+      try {
+        GM_xmlhttpRequest({
+          method: "GET",
+          url: SERVER_FILE + "?t=" + Math.floor(Date.now() / 6e4),
+          timeout: 6e3,
+          onload: (r) => {
+            try {
+              const u = r.status === 200 ? String(JSON.parse(r.responseText).worker || "").replace(/\/+$/, "") : "";
+              if (isWorkerUrl(u)) {
+                worker = u;
+                GM_setValue(SERVER_KEY, JSON.stringify({ at: Date.now(), url: u }));
+              }
+            } catch (e) {
+            }
+            keep();
+          },
+          onerror: keep,
+          ontimeout: keep
+        });
+      } catch (e) {
+        keep();
+      }
+    });
+  }
+  function server() {
+    const c = cachedServer();
+    if (c && Date.now() - c.at < SERVER_TTL) return Promise.resolve(c.url);
+    if (!checking2) checking2 = fetchServer().finally(() => {
+      checking2 = null;
+    });
+    return c ? Promise.resolve(c.url) : checking2;
+  }
+  var call = (method, path, opts) => server().then((base) => request(method, base + path, opts));
+  var AUTH_KEY = "wizascript.cardMaker.galleryAuth";
+  var ApiError = class extends Error {
+    constructor(status, code, message, extra) {
+      super(message);
+      this.status = status;
+      this.code = code;
+      this.extra = extra || {};
+    }
+  };
+  function request(method, url, { body, auth: auth2, adminKey } = {}) {
+    return new Promise((resolve, reject) => {
+      const headers = { "Content-Type": "application/json" };
+      if (auth2) {
+        headers["X-WZ-Install"] = auth2.install;
+        headers["X-WZ-Secret"] = auth2.secret;
+      }
+      if (adminKey) headers["X-WZ-Admin"] = adminKey;
+      const done = (status, text) => {
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch (e) {
+        }
+        if (status >= 200 && status < 300) return resolve(data);
+        if (status === 404 && !data) return resolve(null);
+        reject(new ApiError(status, data && data.error || "http", data && data.message || `The gallery server answered ${status}.`, data));
+      };
+      if (typeof GM_xmlhttpRequest === "function") {
+        GM_xmlhttpRequest({
+          method,
+          url,
+          headers,
+          data: body ? JSON.stringify(body) : void 0,
+          timeout: 3e4,
+          onload: (r) => done(r.status, r.responseText),
+          onerror: () => reject(new ApiError(0, "network", "Couldn't reach the gallery server.")),
+          ontimeout: () => reject(new ApiError(0, "timeout", "The gallery server took too long to answer."))
+        });
+        return;
+      }
+      fetch(url, { method, headers, body: body ? JSON.stringify(body) : void 0 }).then(async (r) => done(r.status, await r.text()), () => reject(new ApiError(0, "network", "Couldn't reach the gallery server.")));
+    });
+  }
+  function loadAuth() {
+    try {
+      const a = JSON.parse(GM_getValue(AUTH_KEY, "null"));
+      return a && a.install && a.secret ? a : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  var auth = null;
+  var making = null;
+  async function getAuth() {
+    if (auth) return auth;
+    auth = loadAuth();
+    if (auth) return auth;
+    if (!making) {
+      making = call("POST", "/v1/install").then((a) => {
+        GM_setValue(AUTH_KEY, JSON.stringify({ install: a.install, secret: a.secret }));
+        auth = a;
+        return a;
+      }).finally(() => {
+        making = null;
+      });
+    }
+    return making;
+  }
+  async function authed(method, path, body) {
+    const a = await getAuth();
+    try {
+      return await call(method, path, { body, auth: a });
+    } catch (e) {
+      if (e.code === "bad_install" || e.code === "no_install") {
+        GM_deleteValue(AUTH_KEY);
+        auth = null;
+        return call(method, path, { body, auth: await getAuth() });
+      }
+      throw e;
+    }
+  }
+  var getMe = () => authed("GET", "/v1/me");
+  var linkStart = () => authed("POST", "/v1/link/start");
+  var linkCheck = () => authed("POST", "/v1/link/check");
+  var state = { name: null, cooldownUntil: null, known: false };
+  var listeners2 = [];
+  var onAccountChange = (fn) => {
+    listeners2.push(fn);
+    return () => listeners2.splice(listeners2.indexOf(fn), 1);
+  };
+  var linkListeners = [];
+  function accountChanged(name, cooldownUntil, justLinked = false) {
+    const was = state.name;
+    state.name = name || null;
+    state.cooldownUntil = cooldownUntil || null;
+    state.known = true;
+    if (was !== state.name) listeners2.slice().forEach((f) => {
+      try {
+        f(state.name);
+      } catch (e) {
+      }
+    });
+    if (justLinked && state.name) linkListeners.slice().forEach((f) => {
+      try {
+        f(state.name);
+      } catch (e) {
+      }
+    });
+  }
 
   // ../wizascript/packages/card-maker/gallery/parts.js
   var ART = { Monster: [160, 90], Spell: [160, 90], Enchantment: [160, 183], Artifact: [64, 64] };
@@ -370,8 +958,9 @@
     try {
       art = await fit(raw.image, w, h2, raw.type === "Artifact" ? "contain" : "cover");
     } catch (e) {
-      note = "art didn't load";
+      note = raw.artNote || "art didn't load";
     }
+    if (!art && raw.artNote) note = raw.artNote;
     if (art && raw.type !== "Artifact" && raw.type !== "Enchantment" && raw.imageType && raw.imageType !== "standard") note = `${raw.imageType} art cropped to 160x90`;
     return {
       type: raw.type,
@@ -392,6 +981,57 @@
       editorGroup,
       group: null
     };
+  }
+  function isFeildmasterExport(text) {
+    try {
+      const b = JSON.parse(text);
+      return !!(b && b.version === 1 && Array.isArray(b.elements) && b.elements.length && typeof b.assets === "object");
+    } catch (e) {
+      return false;
+    }
+  }
+  var feildArt = async (kind, name) => urlToDataUrl(`${await server()}/v1/feild/${kind}/${encodeURIComponent(name)}`);
+  async function urlToDataUrl(url) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      const blob = await r.blob();
+      return await new Promise((ok) => {
+        const fr = new FileReader();
+        fr.onload = () => ok(fr.result);
+        fr.onerror = () => ok(null);
+        fr.readAsDataURL(blob);
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+  async function readFeildmasterFile(text) {
+    const b = JSON.parse(text);
+    const byId = new Map(b.elements.filter((e) => e && e.id).map((e) => [e.id, e]));
+    const assets = b.assets || {};
+    const contained = /* @__PURE__ */ new Set();
+    b.elements.forEach((e) => (e && e.type === "group" ? e.content || [] : []).forEach((id) => contained.add(id)));
+    const groupIds = b.elements.filter((e) => e && e.type === "group" && !contained.has(e.id)).map((e) => e.id);
+    const notes = /* @__PURE__ */ new Map();
+    const image = async (id) => {
+      if (!id) return null;
+      if (isUuid(id)) {
+        const a = assets[id];
+        if (a && typeof a.src === "string") return a.src.startsWith("data:") ? a.src : urlToDataUrl(a.src);
+        return null;
+      }
+      if (/^https?:/.test(id)) return urlToDataUrl(id);
+      const data = await feildArt("avatar", id);
+      if (!data) notes.set(id, "built-in art from feildmaster's editor couldn't be loaded");
+      return data;
+    };
+    const groups = await feildGroups(
+      { el: (id) => byId.get(id), groupIds, allIds: [...byId.keys()] },
+      { image, tribeIcon: (t) => feildArt("tribe", String(t).toUpperCase().replace(/ /g, "_")), why: (id) => notes.get(id) }
+    );
+    const root = groupIds.length === 1 ? byId.get(groupIds[0]) : null;
+    return { name: root && root.name || "", groups };
   }
   function readUcEditorFile(text) {
     const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(text.trim().match(/../g).map((b) => parseInt(b, 16)))));
@@ -657,245 +1297,22 @@
   }
   function pruneUploads(statusById, inIndex) {
     const d = getDraft();
-    let changed = false;
+    let changed2 = false;
     Object.keys(d.uploads).forEach((id) => {
       const st = statusById[id];
       const old = Date.now() - d.uploads[id].postedAt > 14 * 864e5;
       if (st === "approved" && inIndex.has(id) || (st === "rejected" || st === "removed") && old || !st && old) {
         delete d.uploads[id];
-        changed = true;
+        changed2 = true;
       }
     });
-    if (changed) saveDraft();
+    if (changed2) saveDraft();
   }
   function entries() {
     const d = getDraft();
     const out = d.groups.map((g) => ({ key: "g" + g.id, kind: "set", label: g.letter, title: g.name, parts: d.parts.filter((p) => p.group === g.id) }));
     d.parts.filter((p) => !p.group).forEach((p) => out.push({ key: "p" + p.id, kind: "single", title: p.name, parts: [p] }));
     return out;
-  }
-
-  // ../wizascript/packages/core/page-window.js
-  function getPageWindow() {
-    return typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
-  }
-
-  // ../wizascript/packages/core/uc-report.js
-  var TAG = "WZ";
-  var VERSION = 1;
-  var HEADER = `#${TAG}${VERSION} `;
-  var canOpenVoid = () => typeof getPageWindow().openRoom === "function";
-  function closeDialogs() {
-    const BD = getPageWindow().BootstrapDialog;
-    if (!BD) return false;
-    let any = false;
-    try {
-      if (BD.dialogs) Object.values(BD.dialogs).forEach((d) => {
-        if (d && typeof d.close === "function" && (!d.isOpened || d.isOpened())) {
-          d.close();
-          any = true;
-        }
-      });
-      else if (typeof BD.closeAll === "function") {
-        BD.closeAll();
-        any = true;
-      }
-    } catch (e) {
-    }
-    return any;
-  }
-  function openVoid(message, select) {
-    const w = getPageWindow();
-    if (!canOpenVoid()) return false;
-    const go2 = () => {
-      if (!document.querySelector("#chat-public-0")) w.openRoom(0);
-      let tries = 0;
-      const fill = () => {
-        const input = document.querySelector("#chat-public-0 .chat-text");
-        if (!input) {
-          if (++tries < 40) setTimeout(fill, 100);
-          return;
-        }
-        input.value = message;
-        input.focus();
-        const at = select ? message.indexOf(select) : -1;
-        if (at >= 0) input.setSelectionRange(at, at + select.length);
-        else input.setSelectionRange(message.length, message.length);
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      };
-      fill();
-    };
-    if (closeDialogs()) setTimeout(go2, 350);
-    else go2();
-    return true;
-  }
-
-  // ../wizascript/packages/core/account.js
-  var DEFAULT_WORKER = "https://wizascript-gallery.thewiza2341.workers.dev";
-  var WORKER_HOSTS = ["wizascript-gallery.thewiza2341.workers.dev"];
-  var SERVER_FILE = "https://raw.githubusercontent.com/theWiza2341/Wizascript/sounds/server.json";
-  var SERVER_KEY = "wizascript.account.server";
-  var SERVER_TTL = 30 * 60 * 1e3;
-  var WORKER_RE = /^https:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.workers\.dev$/i;
-  var isWorkerUrl = (u) => {
-    if (typeof u !== "string") return false;
-    const v = u.replace(/\/+$/, "");
-    return WORKER_RE.test(v) && WORKER_HOSTS.includes(v.slice("https://".length).toLowerCase());
-  };
-  function cachedServer() {
-    try {
-      const c = JSON.parse(GM_getValue(SERVER_KEY, "null"));
-      return c && isWorkerUrl(c.url) ? c : null;
-    } catch (e) {
-      return null;
-    }
-  }
-  var worker = (cachedServer() || {}).url || DEFAULT_WORKER;
-  var checking2 = null;
-  function fetchServer() {
-    return new Promise((resolve) => {
-      const keep = () => resolve(worker);
-      try {
-        GM_xmlhttpRequest({
-          method: "GET",
-          url: SERVER_FILE + "?t=" + Math.floor(Date.now() / 6e4),
-          timeout: 6e3,
-          onload: (r) => {
-            try {
-              const u = r.status === 200 ? String(JSON.parse(r.responseText).worker || "").replace(/\/+$/, "") : "";
-              if (isWorkerUrl(u)) {
-                worker = u;
-                GM_setValue(SERVER_KEY, JSON.stringify({ at: Date.now(), url: u }));
-              }
-            } catch (e) {
-            }
-            keep();
-          },
-          onerror: keep,
-          ontimeout: keep
-        });
-      } catch (e) {
-        keep();
-      }
-    });
-  }
-  function server() {
-    const c = cachedServer();
-    if (c && Date.now() - c.at < SERVER_TTL) return Promise.resolve(c.url);
-    if (!checking2) checking2 = fetchServer().finally(() => {
-      checking2 = null;
-    });
-    return c ? Promise.resolve(c.url) : checking2;
-  }
-  var call = (method, path, opts) => server().then((base) => request(method, base + path, opts));
-  var AUTH_KEY = "wizascript.cardMaker.galleryAuth";
-  var ApiError = class extends Error {
-    constructor(status, code, message, extra) {
-      super(message);
-      this.status = status;
-      this.code = code;
-      this.extra = extra || {};
-    }
-  };
-  function request(method, url, { body, auth: auth2, adminKey } = {}) {
-    return new Promise((resolve, reject) => {
-      const headers = { "Content-Type": "application/json" };
-      if (auth2) {
-        headers["X-WZ-Install"] = auth2.install;
-        headers["X-WZ-Secret"] = auth2.secret;
-      }
-      if (adminKey) headers["X-WZ-Admin"] = adminKey;
-      const done = (status, text) => {
-        let data = null;
-        try {
-          data = text ? JSON.parse(text) : null;
-        } catch (e) {
-        }
-        if (status >= 200 && status < 300) return resolve(data);
-        if (status === 404 && !data) return resolve(null);
-        reject(new ApiError(status, data && data.error || "http", data && data.message || `The gallery server answered ${status}.`, data));
-      };
-      if (typeof GM_xmlhttpRequest === "function") {
-        GM_xmlhttpRequest({
-          method,
-          url,
-          headers,
-          data: body ? JSON.stringify(body) : void 0,
-          timeout: 3e4,
-          onload: (r) => done(r.status, r.responseText),
-          onerror: () => reject(new ApiError(0, "network", "Couldn't reach the gallery server.")),
-          ontimeout: () => reject(new ApiError(0, "timeout", "The gallery server took too long to answer."))
-        });
-        return;
-      }
-      fetch(url, { method, headers, body: body ? JSON.stringify(body) : void 0 }).then(async (r) => done(r.status, await r.text()), () => reject(new ApiError(0, "network", "Couldn't reach the gallery server.")));
-    });
-  }
-  function loadAuth() {
-    try {
-      const a = JSON.parse(GM_getValue(AUTH_KEY, "null"));
-      return a && a.install && a.secret ? a : null;
-    } catch (e) {
-      return null;
-    }
-  }
-  var auth = null;
-  var making = null;
-  async function getAuth() {
-    if (auth) return auth;
-    auth = loadAuth();
-    if (auth) return auth;
-    if (!making) {
-      making = call("POST", "/v1/install").then((a) => {
-        GM_setValue(AUTH_KEY, JSON.stringify({ install: a.install, secret: a.secret }));
-        auth = a;
-        return a;
-      }).finally(() => {
-        making = null;
-      });
-    }
-    return making;
-  }
-  async function authed(method, path, body) {
-    const a = await getAuth();
-    try {
-      return await call(method, path, { body, auth: a });
-    } catch (e) {
-      if (e.code === "bad_install" || e.code === "no_install") {
-        GM_deleteValue(AUTH_KEY);
-        auth = null;
-        return call(method, path, { body, auth: await getAuth() });
-      }
-      throw e;
-    }
-  }
-  var getMe = () => authed("GET", "/v1/me");
-  var linkStart = () => authed("POST", "/v1/link/start");
-  var linkCheck = () => authed("POST", "/v1/link/check");
-  var state = { name: null, cooldownUntil: null, known: false };
-  var listeners = [];
-  var onAccountChange = (fn) => {
-    listeners.push(fn);
-    return () => listeners.splice(listeners.indexOf(fn), 1);
-  };
-  var linkListeners = [];
-  function accountChanged(name, cooldownUntil, justLinked = false) {
-    const was = state.name;
-    state.name = name || null;
-    state.cooldownUntil = cooldownUntil || null;
-    state.known = true;
-    if (was !== state.name) listeners.slice().forEach((f) => {
-      try {
-        f(state.name);
-      } catch (e) {
-      }
-    });
-    if (justLinked && state.name) linkListeners.slice().forEach((f) => {
-      try {
-        f(state.name);
-      } catch (e) {
-      }
-    });
   }
 
   // ../wizascript/packages/card-maker/gallery/api.js
@@ -1241,7 +1658,7 @@
     let pages = [[]];
     let animate = dir;
     function layout() {
-      const H = area.clientHeight;
+      const H2 = area.clientHeight;
       const grid = h("div", { class: "wz-gl-grid" });
       area.replaceChildren(grid);
       if (!items.length) {
@@ -1268,7 +1685,7 @@
       pages = [];
       let page = null, pageTop = 0;
       rows.forEach((r) => {
-        if (!page || r.bottom - pageTop > H) {
+        if (!page || r.bottom - pageTop > H2) {
           page = [];
           pages.push(page);
           pageTop = r.top;
@@ -1419,7 +1836,7 @@
     let pages = [[]];
     let animate = null;
     function layout() {
-      const H = area.clientHeight;
+      const H2 = area.clientHeight;
       const grid = h("div", { class: "wz-gl-grid" });
       area.replaceChildren(grid);
       if (!items.length) {
@@ -1446,7 +1863,7 @@
       pages = [];
       let page = null, pageTop = 0;
       rows.forEach((r) => {
-        if (!page || r.bottom - pageTop > H) {
+        if (!page || r.bottom - pageTop > H2) {
           page = [];
           pages.push(page);
           pageTop = r.top;
@@ -2217,8 +2634,8 @@ ${CONTEST_CSS}
     }
     draft2.gone = Object.fromEntries(Object.entries(draft2.gone || {}).filter(([, at]) => Date.now() - at < 30 * 6e4));
     let viewAs = "";
-    const listeners2 = [];
-    const notify = () => listeners2.forEach((f) => f());
+    const listeners3 = [];
+    const notify = () => listeners3.forEach((f) => f());
     let browseCtl = null;
     let read = null;
     let readTimer = null;
@@ -2883,7 +3300,7 @@ ${CONTEST_CSS}
     const content = h("div", { class: "wz-gl-content" });
     const hover = h("div", { class: "wz-gl-hover" });
     const panel = h("div", { class: "wz-gl-panel" }, tabs, content, hover);
-    const fileInput = h("input", { type: "file", accept: ".uceditor,image/png", multiple: true, style: { display: "none" } });
+    const fileInput = h("input", { type: "file", accept: ".uceditor,.json,application/json,image/png", multiple: true, style: { display: "none" } });
     panel.appendChild(fileInput);
     const sizeOf = () => SIZES.find((x) => x[0] === draft2.cardSize) || SIZES[1];
     function applyZoom() {
@@ -3056,7 +3473,12 @@ ${CONTEST_CSS}
         if (open) render();
       }, 50);
     });
-    const changed = () => {
+    onArtPicsChange(() => {
+      if (!open) return;
+      if (tab === "browse" && browseCtl) browseCtl.layout();
+      else if (tab === "contest") contests.layout();
+    });
+    const changed2 = () => {
       tidySets();
       saveDraft();
       lastUpload = null;
@@ -3108,17 +3530,17 @@ ${CONTEST_CSS}
           readTimer = setTimeout(() => say("No answer from the editor. Wait for it to finish loading, then try again."), 4e3);
           say(`Reading ${editorLabel()}\u2026`);
         }, { primary: true, title: "List the cards you've made in the editor open here" }),
-        button("Add files\u2026", () => fileInput.click(), { title: "A UC Editor group file (.uceditor) or PNG downloads" }),
+        button("Add files\u2026", () => fileInput.click(), { title: "UC Editor's group file (.uceditor), feildmaster's editor's Export file (.json), or card PNGs" }),
         button("Link selected", () => {
           makeSet(draft2.parts.filter((p) => p.sel));
-          changed();
+          changed2();
         }, { title: "Make the selected parts one set" }),
         button("Unlink selected", () => {
           draft2.parts.filter((p) => p.sel).forEach((p) => {
             p.group = null;
             p.sel = false;
           });
-          changed();
+          changed2();
         }),
         draft2.hideGuide ? button("Guidelines", () => setGuide(true), { title: "What gets accepted into the gallery" }) : null,
         h("span", { class: "wz-gl-grow" }),
@@ -3149,7 +3571,7 @@ ${CONTEST_CSS}
         draft2.parts.length = 0;
         draft2.groups.length = 0;
         reviewing = false;
-        changed();
+        changed2();
       }, { title: "Empty your gallery draft" });
       b.disabled = !draft2.parts.length;
       return b;
@@ -3244,7 +3666,7 @@ ${CONTEST_CSS}
         r.pick = false;
       }));
       say(`Added ${added.length} part${added.length === 1 ? "" : "s"}${asSet && added.length > 1 ? " as a set" : ""}.`);
-      changed();
+      changed2();
     }
     function setsRow() {
       if (!draft2.groups.length) return null;
@@ -3276,7 +3698,7 @@ ${CONTEST_CSS}
         } });
         const type = p.source === "picture" ? h("select", { onchange: (e) => {
           p.type = e.target.value;
-          changed();
+          changed2();
         } }, TYPES.map((t) => h("option", { selected: t === p.type }, t))) : h("div", { style: { fontSize: "11px" }, text: p.type });
         return h(
           "div",
@@ -3284,7 +3706,7 @@ ${CONTEST_CSS}
           set ? h("span", { class: "wz-gl-badge", text: set.letter, style: { background: setColor(set) } }) : null,
           button("\xD7", () => {
             draft2.parts.splice(draft2.parts.indexOf(p), 1);
-            changed();
+            changed2();
           }, { title: "Remove this part", cls: "wz-gl-x" }),
           zoom,
           type,
@@ -3467,7 +3889,24 @@ ${CONTEST_CSS}
       fileInput.value = "";
       for (const f of files) {
         try {
-          if (/\.uceditor$/i.test(f.name)) {
+          const isJson = /\.json$/i.test(f.name) || f.type === "application/json";
+          const text = isJson ? await readFile(f, "readAsText") : null;
+          if (isJson && !isFeildmasterExport(text)) {
+            say(`${f.name} isn't an Export file from feildmaster's editor.`);
+            continue;
+          }
+          if (isJson) {
+            say(`Reading ${f.name}\u2026`);
+            const fx = await readFeildmasterFile(text);
+            const groups = fx.groups.map((g) => {
+              const fresh = g.parts.filter((r) => !draft2.parts.some((p) => sameCard(p, "feildmaster", g.name, r)));
+              return { name: g.name, parts: g.parts.map((r) => ({ ...r, pick: fresh.includes(r) })) };
+            });
+            const n = groups.reduce((k, g) => k + g.parts.length, 0), nNew = groups.reduce((k, g) => k + g.parts.filter((r) => r.pick).length, 0);
+            const noArt = groups.reduce((k, g) => k + g.parts.filter((r) => r.artNote).length, 0);
+            read = { source: "feildmaster", label: `${f.name} (feildmaster's editor file)`, groups };
+            say(!n ? `${f.name}: no cards or artifacts in it.` : nNew ? `${f.name}: ${nNew} new card(s), ticked.${noArt ? ` ${noArt} use his built-in art, which couldn't be loaded yet: add them as PNG pictures instead.` : ""} Untick any you don't want, then Add ticked.` : `${f.name}: all ${n} card(s) are in your draft already.`);
+          } else if (/\.uceditor$/i.test(f.name)) {
             const g = readUcEditorFile(await readFile(f, "readAsText"));
             const fresh = g.parts.filter((r) => !draft2.parts.some((p) => sameCard(p, "sernon", g.name, r)));
             read = { source: "sernon", label: `${f.name} (UC Editor file)`, groups: [{ name: g.name, parts: g.parts.map((r) => ({ ...r, pick: fresh.includes(r) })) }] };
@@ -3485,7 +3924,7 @@ ${CONTEST_CSS}
           say(`Couldn't read ${f.name}.`);
         }
       }
-      changed();
+      changed2();
     });
     function browseTab() {
       const own = acct.posts.filter((p) => !p.contest && (p.status === "pending" || p.status === "rejected") && draft2.uploads[p.id]).map((p) => ({ id: p.id, status: p.status, reason: p.reason, postedAt: p.postedAt, kind: draft2.uploads[p.id].kind, title: draft2.uploads[p.id].title, parts: draft2.uploads[p.id].parts }));
@@ -3544,7 +3983,7 @@ ${CONTEST_CSS}
       view: () => open ? tab : "editor",
       setView,
       onChange(f) {
-        listeners2.push(f);
+        listeners3.push(f);
       },
       // Send queued votes now (the Card Maker is closing or being minimised).
       flush: () => voteQueue.flush(),
@@ -3780,7 +4219,7 @@ a { color: #8ec5ff; }
       status.textContent = text;
       status.style.color = ok ? "#7f7" : "#f77";
     };
-    function draw() {
+    function draw2() {
       wrap.replaceChildren();
       const who = reviewerKey() && reviewerWho();
       if (who) {
@@ -3789,7 +4228,7 @@ a { color: #8ec5ff; }
           h("p", { class: "dim", text: "Review is in the top bar." }),
           h("p", {}, button("Remove key", () => {
             forgetKey();
-            draw();
+            draw2();
             show("Key removed.", true);
           }, { cls: "wz-site-danger" })),
           status
@@ -3805,7 +4244,7 @@ a { color: #8ec5ff; }
         show("Checking\u2026", true);
         try {
           const me = await redeemKey(input.value);
-          draw();
+          draw2();
           show(me.role === "judge" ? `Redeemed. You're judging as ${me.name}: press Review in the top bar.` : `Redeemed. You're reviewing as ${me.name}.`, true);
         } catch (e) {
           show(e.message, false);
@@ -3827,7 +4266,7 @@ a { color: #8ec5ff; }
       );
       setTimeout(() => input.focus(), 50);
     }
-    draw();
+    draw2();
     dialog("Redeem Key", wrap);
   }
   function openHelp() {
@@ -3958,7 +4397,7 @@ a { color: #8ec5ff; }
     onKeyRejected: (code) => forgetKey(code === "key_expired" ? "Your gallery key has expired, so it was removed." : "Your gallery key was revoked, so it was removed."),
     linkSteps,
     watchLink: true,
-    submitNote: "Make cards in an editor (Editor, in the top bar), download them (UC Editor: the group's .uceditor file; either editor: a card PNG), then Add files\u2026. With Wizascript installed, Read from this editor works too."
+    submitNote: "Make cards in an editor (Editor, in the top bar) and save them to a file: UC Editor's group download (.uceditor), or feildmaster's Export \u2192 Download (.json). Then Add files\u2026. With Wizascript installed, Read from this editor works too."
   });
   gallery.el.classList.add("wz-site-panel");
   main.appendChild(gallery.el);
