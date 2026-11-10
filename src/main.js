@@ -17,7 +17,7 @@
 
 import "./setup.js"; // must stay first: storage + asset origin for the code below
 import { buildGalleryPanel } from "@wz/card-maker/gallery/panel.js";
-import { reviewerKey, reviewerWho, keyLabel, keyBox, forgetKey as dropKey, recheckKey, onKeyChange } from "@wz/card-maker/gallery/keybox.js";
+import { reviewerKey, reviewerWho, keyLabel, keyBox, forgetKey as dropKey, recheckKey, onKeyChange, deviceBox, DEVICE_TITLE } from "@wz/card-maker/gallery/keybox.js";
 import { checkFrameImages, CARD_FONT } from "@wz/card-maker/gallery/render.js";
 import { h, button } from "@wz/card-maker/gallery/dom.js";
 import { EDITORS, FRAME_MESSAGE } from "@wz/card-maker/editors.js";
@@ -75,6 +75,9 @@ function toast(text) {
 function openKeyDialog() {
   dialog("Redeem Key", keyBox({ reviewWhere: "in the top bar" }));
 }
+function openDeviceDialog() {
+  dialog(DEVICE_TITLE, deviceBox({ notLinked: "Link your account first (Link my account in Browse or Submit), or redeem a code from a linked device." }));
+}
 
 function openHelp() {
   dialog("Card Gallery", h("div", { class: "wz-site-help" },
@@ -104,7 +107,8 @@ function syncKeyButton() {
   keyBtn.title = keyLabel();
   keyBtn.classList.toggle("on", !!(reviewerKey() && reviewerWho()));
 }
-document.body.append(top, main, keyBtn, toastEl);
+const devBtn = h("button", { type: "button", class: "wz-site-keybtn wz-site-devbtn", onclick: openDeviceDialog, title: DEVICE_TITLE, "aria-label": DEVICE_TITLE }, h("span", { text: "📱" }));
+document.body.append(top, main, keyBtn, devBtn, toastEl);
 syncKeyButton();
 
 // ---- editors ---------------------------------------------------------------------------------

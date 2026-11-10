@@ -895,6 +895,7 @@
   var getMe = () => authed("GET", "/v1/me");
   var linkStart = () => authed("POST", "/v1/link/start");
   var linkCheck = () => authed("POST", "/v1/link/check", selfInfo());
+  var linkShare = () => authed("POST", "/v1/link/share");
   var isDeviceCode = (raw) => /^\s*wzl[\s-]*[0-9a-z]{4}[\s-]*[0-9a-z]{4}\s*$/i.test(String(raw || ""));
   async function redeemDeviceCode(raw) {
     let r;
@@ -2535,7 +2536,7 @@
   }
   async function redeemKey(raw) {
     const k = typeof raw === "string" ? raw.trim() : "";
-    if (!k) throw new Error("Enter the key or code you were given.");
+    if (!k) throw new Error("Enter the key you were given.");
     let me;
     try {
       me = await reviewWhoami(k);
@@ -2569,7 +2570,7 @@
     function draw2() {
       wrap.replaceChildren();
       const who = reviewerKey() && reviewerWho();
-      const input = h("input", { type: "password", placeholder: "Key or code", autocomplete: "off", spellcheck: false });
+      const input = h("input", { type: "password", placeholder: "Key", autocomplete: "off", spellcheck: false });
       let busy = false;
       const submit = async () => {
         if (busy) return;
@@ -2577,15 +2578,10 @@
         go2.disabled = true;
         show("Checking\u2026", true);
         try {
-          if (isDeviceCode(input.value)) {
-            const name = await redeemDeviceCode(input.value);
-            draw2();
-            show(`Linked as ${name}.`, true);
-          } else {
-            const me = await redeemKey(input.value);
-            draw2();
-            show(me.role === "judge" ? `Redeemed. You're judging as ${me.name}: press Review ${reviewWhere}.` : `Redeemed. You're reviewing as ${me.name}.`, true);
-          }
+          if (isDeviceCode(input.value)) throw new Error("That's a device code: use the \u{1F4F1} button next to this one.");
+          const me = await redeemKey(input.value);
+          draw2();
+          show(me.role === "judge" ? `Redeemed. You're judging as ${me.name}: press Review ${reviewWhere}.` : `Redeemed. You're reviewing as ${me.name}.`, true);
         } catch (e) {
           show(e.message, false);
         }
@@ -2612,15 +2608,125 @@
       } else {
         wrap.append(h("p", { text: "Enter a key you were given to review gallery uploads or judge a contest." }));
       }
-      const acct = linkedAccount();
-      wrap.append(
-        h("p", { class: "dim", text: acct ? `Linked as ${acct}. A device code (WZL-\u2026) from another device would switch to its account.` : "Or a device code (WZL-XXXX-XXXX) from a device where your account is linked: Wizascript tab \u2192 Undercards Account \u2192 Link another device." }),
-        h("div", { class: "wz-key-row" }, input, go2),
-        status
-      );
+      wrap.append(h("div", { class: "wz-key-row" }, input, go2), status);
       if (!who) setTimeout(() => input.focus(), 50);
     }
     draw2();
+    return wrap;
+  }
+  var DEVICE_TITLE = "Link a Mobile Account";
+  var fmtLeft = (ms) => {
+    const s = Math.max(0, Math.ceil(ms / 1e3));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  function deviceBox({ notLinked = "Link your account first (Link my account), then make the code here." } = {}) {
+    const wrap = h("div", { class: "wz-key-box wz-dev-box" });
+    let timer = null;
+    const stop = () => {
+      clearInterval(timer);
+      timer = null;
+    };
+    const back = () => button("Back", () => {
+      stop();
+      choose();
+    });
+    function choose() {
+      const acct = linkedAccount();
+      wrap.replaceChildren(
+        h("p", { text: "Use the Card Gallery on your phone or another computer with the same Undercards account." }),
+        h(
+          "div",
+          { class: "wz-dev-choices" },
+          button("Generate a code", generate, { primary: true, title: "On a device where your account is linked" }),
+          button("Redeem a code", redeem, { title: "On the new device" })
+        ),
+        h("p", { class: "dim", text: acct ? `This device is linked as ${acct}.` : "This device isn't linked yet." })
+      );
+    }
+    async function generate() {
+      stop();
+      if (!linkedAccount()) {
+        wrap.replaceChildren(h("p", { class: "wz-key-status", style: "color:#f77", text: `This device isn't linked. ${notLinked}` }), h("p", {}, back()));
+        return;
+      }
+      wrap.replaceChildren(h("p", { text: "Making a code\u2026" }));
+      let r;
+      try {
+        r = await linkShare();
+      } catch (e) {
+        wrap.replaceChildren(h("p", { class: "wz-key-status", style: "color:#f77", text: e && e.message || "Couldn't reach the Wizascript server." }), h("p", {}, back()));
+        return;
+      }
+      if (!wrap.isConnected) return;
+      const code = h("div", { class: "wz-dev-code", text: r.code, title: "Select to copy" });
+      const left = h("span", { class: "dim" });
+      const tick = () => {
+        if (!wrap.isConnected) return stop();
+        const ms = r.expiresAt - Date.now();
+        if (ms <= 0) {
+          stop();
+          left.textContent = "Expired. Make a new one.";
+          code.style.opacity = ".35";
+          return;
+        }
+        left.textContent = `Expires in ${fmtLeft(ms)}. Works once.`;
+      };
+      timer = setInterval(tick, 1e3);
+      tick();
+      wrap.replaceChildren(
+        h("p", { text: `A code for ${linkedAccount() || r.account}:` }),
+        code,
+        h("p", {}, left),
+        h("p", { class: "dim", text: "On the other device, open the Card Gallery (the website, or Card Maker in Wizascript), press \u{1F4F1}, then Redeem a code." }),
+        h("div", { class: "wz-key-row" }, back(), button("New code", generate))
+      );
+    }
+    function redeem() {
+      stop();
+      const acct = linkedAccount();
+      const input = h("input", { type: "text", placeholder: "WZL-XXXX-XXXX", autocomplete: "off", spellcheck: false, class: "wz-dev-input" });
+      const status = h("p", { class: "wz-key-status" });
+      const show = (text, ok) => {
+        status.textContent = text;
+        status.style.color = ok ? "#7f7" : "#f77";
+      };
+      let busy = false;
+      const submit = async () => {
+        if (busy) return;
+        if (!isDeviceCode(input.value)) {
+          show("Codes look like WZL-XXXX-XXXX.", false);
+          return;
+        }
+        busy = true;
+        go2.disabled = true;
+        show("Checking\u2026", true);
+        try {
+          const name = await redeemDeviceCode(input.value);
+          input.value = "";
+          show(`Linked as ${name}.`, true);
+        } catch (e) {
+          show(e.message, false);
+        }
+        busy = false;
+        go2.disabled = false;
+      };
+      const go2 = button("Redeem", submit, { primary: true });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submit();
+        }
+      });
+      wrap.replaceChildren(
+        h("p", { text: "Enter the code from a device where your account is linked (\u{1F4F1} \u2192 Generate a code there)." }),
+        ...acct ? [h("p", { class: "dim", text: `This device is linked as ${acct}; a code switches it to the code's account.` })] : [],
+        h("div", { class: "wz-key-row" }, input, go2),
+        status,
+        h("p", {}, back())
+      );
+      setTimeout(() => input.focus(), 50);
+    }
+    choose();
     return wrap;
   }
   var KEYBOX_CSS = `
@@ -2641,6 +2747,11 @@
 .wz-key-box .wz-cm-btn, .wz-key-dfoot .wz-cm-btn { height: 28px; padding: 0 14px; }
 .wz-key-status { min-height: 1.2em; margin-top: 8px !important; }
 .wz-cm-btn.wz-key-danger { background: #6b2f2f; border-color: #bf6f6f; }
+.wz-key-btn.wz-dev-btn { left: 44px; font-size: 15px; }
+.wz-dev-choices { display: flex; gap: 8px; margin: 0 0 10px; }
+.wz-key-box .wz-dev-choices .wz-cm-btn { flex: 1; height: 40px; font-size: 15px; }
+.wz-dev-code { font: 24px "DTM-Mono", "DTM Mono", monospace; letter-spacing: 2px; text-align: center; padding: 8px; margin: 0 0 8px; background: #000; border: 1px solid #666; user-select: all; }
+.wz-key-row input.wz-dev-input { text-transform: uppercase; }
 `;
 
   // ../wz/packages/card-maker/gallery/panel.js
@@ -4271,6 +4382,7 @@ a { color: #8ec5ff; }
   background: #000; color: #bbb; border: 1px solid #666; font-size: 16px; line-height: 28px; cursor: pointer; opacity: .55; }
 .wz-site-keybtn:hover, .wz-site-keybtn:focus-visible { opacity: 1; color: #fff; border-color: #fff; }
 .wz-site-keybtn.on { color: #ffd84a; border-color: #ffd84a; opacity: .9; }
+.wz-site-keybtn.wz-site-devbtn { left: 46px; font-size: 15px; }
 
 /* dialogs */
 .wz-site-dback { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; padding: 16px; }
@@ -4361,6 +4473,9 @@ a { color: #8ec5ff; }
   function openKeyDialog() {
     dialog("Redeem Key", keyBox({ reviewWhere: "in the top bar" }));
   }
+  function openDeviceDialog() {
+    dialog(DEVICE_TITLE, deviceBox({ notLinked: "Link your account first (Link my account in Browse or Submit), or redeem a code from a linked device." }));
+  }
   function openHelp() {
     dialog("Card Gallery", h(
       "div",
@@ -4408,7 +4523,8 @@ a { color: #8ec5ff; }
     keyBtn.title = keyLabel();
     keyBtn.classList.toggle("on", !!(reviewerKey() && reviewerWho()));
   }
-  document.body.append(top, main, keyBtn, toastEl);
+  var devBtn = h("button", { type: "button", class: "wz-site-keybtn wz-site-devbtn", onclick: openDeviceDialog, title: DEVICE_TITLE, "aria-label": DEVICE_TITLE }, h("span", { text: "\u{1F4F1}" }));
+  document.body.append(top, main, keyBtn, devBtn, toastEl);
   syncKeyButton();
   var frames = {};
   var editorKey = EDITORS[GM_getValue(EDITOR_KEY, "")] ? GM_getValue(EDITOR_KEY, "") : "sernon";

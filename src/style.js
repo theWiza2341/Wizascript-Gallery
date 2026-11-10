@@ -54,6 +54,7 @@ a { color: #8ec5ff; }
   background: #000; color: #bbb; border: 1px solid #666; font-size: 16px; line-height: 28px; cursor: pointer; opacity: .55; }
 .wz-site-keybtn:hover, .wz-site-keybtn:focus-visible { opacity: 1; color: #fff; border-color: #fff; }
 .wz-site-keybtn.on { color: #ffd84a; border-color: #ffd84a; opacity: .9; }
+.wz-site-keybtn.wz-site-devbtn { left: 46px; font-size: 15px; }
 
 /* dialogs */
 .wz-site-dback { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; padding: 16px; }
