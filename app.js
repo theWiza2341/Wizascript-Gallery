@@ -1,4 +1,4 @@
-// Wizascript Card Gallery website 0.1.0-dev3 (gallery code from Wizascript 1.7.3). Built by build.mjs from src/; edit src/, not this file.
+// Wizascript Card Gallery website 0.1.0-dev3 (gallery code from Wizascript 1.8.0). Built by build.mjs from src/; edit src/, not this file.
 (() => {
   // src/setup.js
   var PREFIX = "wzg:";
@@ -64,7 +64,7 @@
   };
   window.WZ_ASSET_ORIGIN = "https://undercards.net";
 
-  // ../wizascript/packages/card-maker/gallery/dom.js
+  // ../wz/packages/card-maker/gallery/dom.js
   function h(tag, props = {}, ...kids) {
     const el = document.createElement(tag);
     for (const [k, v] of Object.entries(props || {})) {
@@ -87,7 +87,7 @@
     return h("button", { type: "button", class: `wz-cm-btn${primary ? " wz-gl-primary" : ""}${cls ? " " + cls : ""}`, title, onclick }, label);
   }
 
-  // ../wizascript/packages/card-maker/gallery/artpic.js
+  // ../wz/packages/card-maker/gallery/artpic.js
   var ONE = 176;
   var TWO = 176 * 2 + 3;
   var H = 246;
@@ -401,7 +401,7 @@
     return img;
   }
 
-  // ../wizascript/packages/card-maker/gallery/render.js
+  // ../wz/packages/card-maker/gallery/render.js
   var CARD_W = 176;
   var CARD_H = 246;
   var UCE = "https://sernon158.github.io/uc-editor/";
@@ -643,7 +643,7 @@
 .wz-gl-arttext { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 `;
 
-  // ../wizascript/packages/card-maker/gallery/feild.js
+  // ../wz/packages/card-maker/gallery/feild.js
   var isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v || "");
   async function feildPart(e, ctx) {
     if (!e) return null;
@@ -693,12 +693,12 @@
     return groups;
   }
 
-  // ../wizascript/packages/core/page-window.js
+  // ../wz/packages/core/page-window.js
   function getPageWindow() {
     return typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   }
 
-  // ../wizascript/packages/core/uc-report.js
+  // ../wz/packages/core/uc-report.js
   var TAG = "WZ";
   var VERSION = 1;
   var HEADER = `#${TAG}${VERSION} `;
@@ -748,7 +748,7 @@
     return true;
   }
 
-  // ../wizascript/packages/core/account.js
+  // ../wz/packages/core/account.js
   var DEFAULT_WORKER = "https://wizascript-gallery.thewiza2341.workers.dev";
   var WORKER_HOSTS = ["wizascript-gallery.thewiza2341.workers.dev"];
   var SERVER_FILE = "https://raw.githubusercontent.com/theWiza2341/Wizascript/sounds/server.json";
@@ -887,11 +887,35 @@
       throw e;
     }
   }
+  function selfInfo() {
+    const w = getPageWindow();
+    const id = Number(w.selfId);
+    return { selfId: Number.isInteger(id) && id > 0 ? id : null, selfName: typeof w.selfUsername === "string" && w.selfUsername ? w.selfUsername : null };
+  }
   var getMe = () => authed("GET", "/v1/me");
   var linkStart = () => authed("POST", "/v1/link/start");
-  var linkCheck = () => authed("POST", "/v1/link/check");
+  var linkCheck = () => authed("POST", "/v1/link/check", selfInfo());
+  var isDeviceCode = (raw) => /^\s*wzl[\s-]*[0-9a-z]{4}[\s-]*[0-9a-z]{4}\s*$/i.test(String(raw || ""));
+  async function redeemDeviceCode(raw) {
+    let r;
+    try {
+      r = await authed("POST", "/v1/link/redeem", { code: String(raw || "").trim(), ...selfInfo() });
+    } catch (e) {
+      const why = {
+        bad_code: "That code isn't valid. Codes work once.",
+        code_expired: "That code has expired. Make a new one on your linked device.",
+        wrong_account: e.message,
+        cooldown: "This install switched accounts less than a day ago. Try again later.",
+        rate_limited: "Too many wrong codes. Try again in an hour."
+      }[e && e.code];
+      throw new Error(why || e && e.message || "Couldn't reach the Wizascript server.");
+    }
+    accountChanged(r.account, r.cooldownUntil, true);
+    return r.account;
+  }
   var state = { name: null, cooldownUntil: null, known: false };
   var listeners2 = [];
+  var linkedAccount = () => state.name;
   var onAccountChange = (fn) => {
     listeners2.push(fn);
     return () => listeners2.splice(listeners2.indexOf(fn), 1);
@@ -916,7 +940,7 @@
     });
   }
 
-  // ../wizascript/packages/card-maker/gallery/parts.js
+  // ../wz/packages/card-maker/gallery/parts.js
   var ART = { Monster: [160, 90], Spell: [160, 90], Enchantment: [160, 183], Artifact: [64, 64] };
   var ARTIFACT_MAX_W = 704;
   var UCE2 = "https://sernon158.github.io/uc-editor/";
@@ -1219,7 +1243,7 @@
     return { w, h: h2, bg: bg.join(","), parts: out };
   }
 
-  // ../wizascript/packages/card-maker/gallery/draft.js
+  // ../wz/packages/card-maker/gallery/draft.js
   var KEY = "wizascript.cardMaker.gallery";
   var draft = null;
   var saveTimer = null;
@@ -1297,16 +1321,16 @@
   }
   function pruneUploads(statusById, inIndex) {
     const d = getDraft();
-    let changed2 = false;
+    let changed3 = false;
     Object.keys(d.uploads).forEach((id) => {
       const st = statusById[id];
       const old = Date.now() - d.uploads[id].postedAt > 14 * 864e5;
       if (st === "approved" && inIndex.has(id) || (st === "rejected" || st === "removed") && old || !st && old) {
         delete d.uploads[id];
-        changed2 = true;
+        changed3 = true;
       }
     });
-    if (changed2) saveDraft();
+    if (changed3) saveDraft();
   }
   function entries() {
     const d = getDraft();
@@ -1315,7 +1339,7 @@
     return out;
   }
 
-  // ../wizascript/packages/card-maker/gallery/api.js
+  // ../wz/packages/card-maker/gallery/api.js
   var GALLERY_RAW = "https://raw.githubusercontent.com/theWiza2341/Wizascript/gallery/";
   var UPLOAD_MAX_ENTRIES = 10;
   var UPLOAD_MAX_PICTURES = 40;
@@ -1529,7 +1553,7 @@
     });
   }
 
-  // ../wizascript/packages/card-maker/gallery/browse.js
+  // ../wz/packages/card-maker/gallery/browse.js
   var LISTS = [["new", "Newest"], ["week", "This Week"], ["month", "This Month"], ["all", "All Time"]];
   var DT = `"DTM-Mono", "DTM Mono", "WZ DTM Mono", monospace`;
   var BROWSE_CSS = `
@@ -1911,7 +1935,7 @@
     return { area, pager, layout };
   }
 
-  // ../wizascript/packages/card-maker/gallery/contest.js
+  // ../wz/packages/card-maker/gallery/contest.js
   var DT2 = `"DTM-Mono", "DTM Mono", "WZ DTM Mono", monospace`;
   var PLACES = ["1st", "2nd", "3rd"];
   var CONTEST_CSS = `
@@ -2470,7 +2494,156 @@
     return { state: cs, refresh, active, shownActive, slots, view, layout, judgingView, manageView, loadJudging, unscored, judgeContestId };
   }
 
-  // ../wizascript/packages/card-maker/gallery/panel.js
+  // ../wz/packages/card-maker/gallery/keybox.js
+  var REVIEW_KEY = "wizascript.cardMaker.galleryReview";
+  var REVIEW_WHO = "wizascript.cardMaker.galleryReviewWho";
+  var ROLE_NAMES = { owner: "owner", reviewer: "reviewer", judge: "judge" };
+  var reviewerKey = () => {
+    try {
+      return String(GM_getValue(REVIEW_KEY, "") || "");
+    } catch (e) {
+      return "";
+    }
+  };
+  var reviewerWho = () => {
+    try {
+      return JSON.parse(GM_getValue(REVIEW_WHO, "null"));
+    } catch (e) {
+      return null;
+    }
+  };
+  var keyLabel = () => {
+    const who = reviewerKey() && reviewerWho();
+    return who ? `Key: ${who.name} (${ROLE_NAMES[who.role] || "reviewer"})` : "Redeem Key";
+  };
+  var listeners3 = [];
+  var onKeyChange = (fn) => {
+    listeners3.push(fn);
+  };
+  var changed2 = () => listeners3.slice().forEach((f) => {
+    try {
+      f();
+    } catch (e) {
+    }
+  });
+  function forgetKey() {
+    if (!reviewerKey()) return false;
+    GM_deleteValue(REVIEW_KEY);
+    GM_deleteValue(REVIEW_WHO);
+    changed2();
+    return true;
+  }
+  async function redeemKey(raw) {
+    const k = typeof raw === "string" ? raw.trim() : "";
+    if (!k) throw new Error("Enter the key or code you were given.");
+    let me;
+    try {
+      me = await reviewWhoami(k);
+    } catch (e) {
+      throw new Error(e && e.code === "not_admin" ? "That key isn't valid." : e && e.code === "key_expired" ? "That key has expired." : e && e.code === "rate_limited" ? "Too many wrong keys. Try again in an hour." : e && e.message || "Couldn't check the key.");
+    }
+    GM_setValue(REVIEW_KEY, k);
+    GM_setValue(REVIEW_WHO, JSON.stringify({ name: me.name, role: me.role }));
+    changed2();
+    return me;
+  }
+  function recheckKey(onGone) {
+    const k = reviewerKey();
+    if (!k) return;
+    reviewWhoami(k).then((me) => {
+      GM_setValue(REVIEW_WHO, JSON.stringify({ name: me.name, role: me.role }));
+      changed2();
+    }, (e) => {
+      if (e && (e.code === "key_expired" || e.code === "not_admin") && forgetKey()) {
+        onGone(e.code === "key_expired" ? "Your gallery key has expired, so it was removed." : "Your gallery key was revoked, so it was removed.");
+      }
+    });
+  }
+  function keyBox({ reviewWhere = "in the title bar" } = {}) {
+    const wrap = h("div", { class: "wz-key-box" });
+    const status = h("p", { class: "wz-key-status" });
+    const show = (text, ok) => {
+      status.textContent = text;
+      status.style.color = ok ? "#7f7" : "#f77";
+    };
+    function draw2() {
+      wrap.replaceChildren();
+      const who = reviewerKey() && reviewerWho();
+      const input = h("input", { type: "password", placeholder: "Key or code", autocomplete: "off", spellcheck: false });
+      let busy = false;
+      const submit = async () => {
+        if (busy) return;
+        busy = true;
+        go2.disabled = true;
+        show("Checking\u2026", true);
+        try {
+          if (isDeviceCode(input.value)) {
+            const name = await redeemDeviceCode(input.value);
+            draw2();
+            show(`Linked as ${name}.`, true);
+          } else {
+            const me = await redeemKey(input.value);
+            draw2();
+            show(me.role === "judge" ? `Redeemed. You're judging as ${me.name}: press Review ${reviewWhere}.` : `Redeemed. You're reviewing as ${me.name}.`, true);
+          }
+        } catch (e) {
+          show(e.message, false);
+        }
+        busy = false;
+        go2.disabled = false;
+      };
+      const go2 = button("Redeem", submit, { primary: true });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submit();
+        }
+      });
+      if (who) {
+        wrap.append(
+          h("p", {}, "Active key: ", h("b", { text: who.name }), ` (${ROLE_NAMES[who.role] || "reviewer"}).`),
+          h("p", { class: "dim", text: `Review is ${reviewWhere}.` }),
+          h("p", {}, button("Remove key", () => {
+            forgetKey();
+            draw2();
+            show("Key removed.", true);
+          }, { cls: "wz-key-danger" }))
+        );
+      } else {
+        wrap.append(h("p", { text: "Enter a key you were given to review gallery uploads or judge a contest." }));
+      }
+      const acct = linkedAccount();
+      wrap.append(
+        h("p", { class: "dim", text: acct ? `Linked as ${acct}. A device code (WZL-\u2026) from another device would switch to its account.` : "Or a device code (WZL-XXXX-XXXX) from a device where your account is linked: Wizascript tab \u2192 Undercards Account \u2192 Link another device." }),
+        h("div", { class: "wz-key-row" }, input, go2),
+        status
+      );
+      if (!who) setTimeout(() => input.focus(), 50);
+    }
+    draw2();
+    return wrap;
+  }
+  var KEYBOX_CSS = `
+.wz-key-btn { position: absolute; left: 8px; bottom: 8px; z-index: 30; width: 30px; height: 30px; border-radius: 15px; padding: 0;
+  background: #000; color: #bbb; border: 1px solid #666; font-size: 16px; line-height: 28px; cursor: pointer; opacity: .55; }
+.wz-key-btn:hover, .wz-key-btn:focus-visible { opacity: 1; color: #fff; border-color: #fff; }
+.wz-key-btn.on { color: #ffd84a; border-color: #ffd84a; opacity: .9; }
+.wz-key-back { position: absolute; inset: 0; z-index: 40; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.wz-key-dialog { width: min(440px, 100%); background: #0d0d0d; border: 2px solid #fff; border-radius: 4px; box-shadow: 0 6px 24px rgba(0,0,0,.8); font-size: 14px; color: #fff; }
+.wz-key-dhead { padding: 10px 14px; border-bottom: 1px solid #444; font-size: 18px; }
+.wz-key-dialog > .wz-key-box { padding: 12px 14px; }
+.wz-key-dfoot { display: flex; justify-content: flex-end; padding: 8px 14px; border-top: 1px solid #444; }
+.wz-key-box p { margin: 0 0 10px; }
+.wz-key-box .dim { color: #aaa; font-size: 13px; }
+.wz-key-row { display: flex; gap: 6px; }
+.wz-key-row input { flex: 1; min-width: 0; height: 28px; background: #222; color: #fff; border: 1px solid #666; border-radius: 3px; padding: 0 8px; font: 14px Arial, sans-serif; }
+.wz-key-row input:focus { border-color: #8ea6e8; outline: none; }
+.wz-key-box .wz-cm-btn, .wz-key-dfoot .wz-cm-btn { height: 28px; padding: 0 14px; }
+.wz-key-status { min-height: 1.2em; margin-top: 8px !important; }
+.wz-cm-btn.wz-key-danger { background: #6b2f2f; border-color: #bf6f6f; }
+`;
+
+  // ../wz/packages/card-maker/gallery/panel.js
   var STYLE_ID = "wizascript-cardgallery-style";
   var TYPES = ["Monster", "Spell", "Enchantment", "Artifact"];
   var COLORS = ["#e6b422", "#4aa3df", "#e05a5a", "#5cc46a", "#b07de0", "#e08a3c", "#3cc8c0", "#d65ca8"];
@@ -2607,6 +2780,7 @@
 ${TILE_CSS}
 ${BROWSE_CSS}
 ${CONTEST_CSS}
+${KEYBOX_CSS}
 `;
   function injectStyle() {
     if (document.getElementById(STYLE_ID)) return;
@@ -2634,8 +2808,8 @@ ${CONTEST_CSS}
     }
     draft2.gone = Object.fromEntries(Object.entries(draft2.gone || {}).filter(([, at]) => Date.now() - at < 30 * 6e4));
     let viewAs = "";
-    const listeners3 = [];
-    const notify = () => listeners3.forEach((f) => f());
+    const listeners4 = [];
+    const notify = () => listeners4.forEach((f) => f());
     let browseCtl = null;
     let read = null;
     let readTimer = null;
@@ -3034,7 +3208,7 @@ ${CONTEST_CSS}
         h("div", { class: "wz-gl-bar" }, roleBtns, nameBox, addBtn)
       ];
       if (rev.newKey) {
-        const keyBox = h("input", { type: "text", readOnly: true, value: rev.newKey.key, class: "wz-gl-key", onfocus: (e) => e.target.select() });
+        const keyBox2 = h("input", { type: "text", readOnly: true, value: rev.newKey.key, class: "wz-gl-key", onfocus: (e) => e.target.select() });
         parts.push(h(
           "div",
           { class: "wz-gl-rev wz-gl-newkey" },
@@ -3042,11 +3216,11 @@ ${CONTEST_CSS}
           h(
             "div",
             { class: "wz-gl-bar" },
-            keyBox,
+            keyBox2,
             button("Copy", () => copyText(rev.newKey.key).then((ok) => {
               if (ok) say("Copied.");
               else {
-                keyBox.focus();
+                keyBox2.focus();
                 say("Press Ctrl+C to copy.");
               }
             })),
@@ -3055,7 +3229,7 @@ ${CONTEST_CSS}
               render();
             })
           ),
-          h("div", { class: "dim", text: "Send it to them privately (a DM, not a channel). They enter it with Redeem Key: on the Card Maker tab of Wizascript's settings, or the key button at the bottom left of the gallery website." })
+          h("div", { class: "dim", text: "Send it to them privately (a DM, not a channel). They enter it with the key button (\u26BF) at the bottom left of the gallery, in the Card Maker or on the gallery website." })
         ));
       }
       if (rev.sectionError) parts.push(h("div", { class: "wz-gl-issues", text: rev.sectionError }));
@@ -3478,7 +3652,7 @@ ${CONTEST_CSS}
       if (tab === "browse" && browseCtl) browseCtl.layout();
       else if (tab === "contest") contests.layout();
     });
-    const changed2 = () => {
+    const changed3 = () => {
       tidySets();
       saveDraft();
       lastUpload = null;
@@ -3533,14 +3707,14 @@ ${CONTEST_CSS}
         button("Add files\u2026", () => fileInput.click(), { title: "UC Editor's group file (.uceditor), feildmaster's editor's Export file (.json), or card PNGs" }),
         button("Link selected", () => {
           makeSet(draft2.parts.filter((p) => p.sel));
-          changed2();
+          changed3();
         }, { title: "Make the selected parts one set" }),
         button("Unlink selected", () => {
           draft2.parts.filter((p) => p.sel).forEach((p) => {
             p.group = null;
             p.sel = false;
           });
-          changed2();
+          changed3();
         }),
         draft2.hideGuide ? button("Guidelines", () => setGuide(true), { title: "What gets accepted into the gallery" }) : null,
         h("span", { class: "wz-gl-grow" }),
@@ -3571,7 +3745,7 @@ ${CONTEST_CSS}
         draft2.parts.length = 0;
         draft2.groups.length = 0;
         reviewing = false;
-        changed2();
+        changed3();
       }, { title: "Empty your gallery draft" });
       b.disabled = !draft2.parts.length;
       return b;
@@ -3666,7 +3840,7 @@ ${CONTEST_CSS}
         r.pick = false;
       }));
       say(`Added ${added.length} part${added.length === 1 ? "" : "s"}${asSet && added.length > 1 ? " as a set" : ""}.`);
-      changed2();
+      changed3();
     }
     function setsRow() {
       if (!draft2.groups.length) return null;
@@ -3698,7 +3872,7 @@ ${CONTEST_CSS}
         } });
         const type = p.source === "picture" ? h("select", { onchange: (e) => {
           p.type = e.target.value;
-          changed2();
+          changed3();
         } }, TYPES.map((t) => h("option", { selected: t === p.type }, t))) : h("div", { style: { fontSize: "11px" }, text: p.type });
         return h(
           "div",
@@ -3706,7 +3880,7 @@ ${CONTEST_CSS}
           set ? h("span", { class: "wz-gl-badge", text: set.letter, style: { background: setColor(set) } }) : null,
           button("\xD7", () => {
             draft2.parts.splice(draft2.parts.indexOf(p), 1);
-            changed2();
+            changed3();
           }, { title: "Remove this part", cls: "wz-gl-x" }),
           zoom,
           type,
@@ -3924,7 +4098,7 @@ ${CONTEST_CSS}
           say(`Couldn't read ${f.name}.`);
         }
       }
-      changed2();
+      changed3();
     });
     function browseTab() {
       const own = acct.posts.filter((p) => !p.contest && (p.status === "pending" || p.status === "rejected") && draft2.uploads[p.id]).map((p) => ({ id: p.id, status: p.status, reason: p.reason, postedAt: p.postedAt, kind: draft2.uploads[p.id].kind, title: draft2.uploads[p.id].title, parts: draft2.uploads[p.id].parts }));
@@ -3983,7 +4157,7 @@ ${CONTEST_CSS}
       view: () => open ? tab : "editor",
       setView,
       onChange(f) {
-        listeners3.push(f);
+        listeners4.push(f);
       },
       // Send queued votes now (the Card Maker is closing or being minimised).
       flush: () => voteQueue.flush(),
@@ -3998,7 +4172,7 @@ ${CONTEST_CSS}
     };
   }
 
-  // ../wizascript/packages/card-maker/editors.js
+  // ../wz/packages/card-maker/editors.js
   var EDITORS = {
     feildmaster: {
       label: "feildmaster's Template Editor",
@@ -4133,49 +4307,21 @@ a { color: #8ec5ff; }
 
   // src/main.js
   var VIEWS = [["editor", "Editor", "\u270E"], ["browse", "Browse", "\u25A4"], ["contest", "Contest", "\u2605"], ["submit", "Submit", "\u2B06"], ["review", "Review", "\u2713"]];
-  var REVIEW_KEY = "wizascript.cardMaker.galleryReview";
-  var REVIEW_WHO = "wizascript.cardMaker.galleryReviewWho";
   var EDITOR_KEY = "wizascript.site.editor";
-  var ROLE_NAMES = { owner: "owner", reviewer: "reviewer", judge: "judge" };
   var CREDIT = { feildmaster: "by feildmaster", sernon: "by sernon158" };
   var SHORT = { feildmaster: "feildmaster's Template Editor", sernon: "UC Editor" };
   var style = document.createElement("style");
   style.textContent = SITE_CSS.replace(/\$FONT/g, CARD_FONT);
   document.head.appendChild(style);
-  var reviewerKey = () => GM_getValue(REVIEW_KEY, "") || "";
-  var reviewerWho = () => {
-    try {
-      return JSON.parse(GM_getValue(REVIEW_WHO, "null"));
-    } catch (e) {
-      return null;
-    }
-  };
   var gallery = null;
   function keyChanged() {
     syncKeyButton();
     if (gallery) gallery.reviewerChanged();
     syncNav();
   }
-  function forgetKey(message) {
-    if (!reviewerKey()) return;
-    GM_deleteValue(REVIEW_KEY);
-    GM_deleteValue(REVIEW_WHO);
-    keyChanged();
-    if (message) toast(message);
-  }
-  async function redeemKey(raw) {
-    const k = typeof raw === "string" ? raw.trim() : "";
-    if (!k) throw new Error("Enter the key you were given.");
-    let me;
-    try {
-      me = await reviewWhoami(k);
-    } catch (e) {
-      throw new Error(e && e.code === "not_admin" ? "That key isn't valid." : e && e.code === "key_expired" ? "That key has expired." : e && e.code === "rate_limited" ? "Too many wrong keys. Try again in an hour." : e && e.message || "Couldn't check the key.");
-    }
-    GM_setValue(REVIEW_KEY, k);
-    GM_setValue(REVIEW_WHO, JSON.stringify({ name: me.name, role: me.role }));
-    keyChanged();
-    return me;
+  onKeyChange(keyChanged);
+  function forgetKey2(message) {
+    if (forgetKey() && message) toast(message);
   }
   var openDialog = null;
   function dialog(title, body) {
@@ -4213,61 +4359,7 @@ a { color: #8ec5ff; }
     toastTimer = setTimeout(() => toastEl.classList.remove("on"), 5e3);
   }
   function openKeyDialog() {
-    const wrap = h("div", { class: "wz-site-key" });
-    const status = h("p", { class: "wz-site-kstatus" });
-    const show = (text, ok) => {
-      status.textContent = text;
-      status.style.color = ok ? "#7f7" : "#f77";
-    };
-    function draw2() {
-      wrap.replaceChildren();
-      const who = reviewerKey() && reviewerWho();
-      if (who) {
-        wrap.append(
-          h("p", {}, "Active key: ", h("b", { text: who.name }), ` (${ROLE_NAMES[who.role] || "reviewer"}).`),
-          h("p", { class: "dim", text: "Review is in the top bar." }),
-          h("p", {}, button("Remove key", () => {
-            forgetKey();
-            draw2();
-            show("Key removed.", true);
-          }, { cls: "wz-site-danger" })),
-          status
-        );
-        return;
-      }
-      const input = h("input", { type: "password", placeholder: "Key", autocomplete: "off", spellcheck: false });
-      let busy = false;
-      const submit = async () => {
-        if (busy) return;
-        busy = true;
-        go2.disabled = true;
-        show("Checking\u2026", true);
-        try {
-          const me = await redeemKey(input.value);
-          draw2();
-          show(me.role === "judge" ? `Redeemed. You're judging as ${me.name}: press Review in the top bar.` : `Redeemed. You're reviewing as ${me.name}.`, true);
-        } catch (e) {
-          show(e.message, false);
-        }
-        busy = false;
-        go2.disabled = false;
-      };
-      const go2 = button("Redeem", submit, { primary: true });
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          submit();
-        }
-      });
-      wrap.append(
-        h("p", { text: "Enter a key you were given to review gallery uploads or judge a contest." }),
-        h("div", { class: "wz-site-krow" }, input, go2),
-        status
-      );
-      setTimeout(() => input.focus(), 50);
-    }
-    draw2();
-    dialog("Redeem Key", wrap);
+    dialog("Redeem Key", keyBox({ reviewWhere: "in the top bar" }));
   }
   function openHelp() {
     dialog("Card Gallery", h(
@@ -4313,9 +4405,8 @@ a { color: #8ec5ff; }
   var main = h("main", { class: "wz-site-main" }, editorPane);
   var keyBtn = h("button", { type: "button", class: "wz-site-keybtn", onclick: openKeyDialog, "aria-label": "Redeem Key" }, h("span", { text: "\u26BF" }));
   function syncKeyButton() {
-    const who = reviewerKey() && reviewerWho();
-    keyBtn.title = who ? `Key: ${who.name} (${ROLE_NAMES[who.role] || "reviewer"})` : "Redeem Key";
-    keyBtn.classList.toggle("on", !!who);
+    keyBtn.title = keyLabel();
+    keyBtn.classList.toggle("on", !!(reviewerKey() && reviewerWho()));
   }
   document.body.append(top, main, keyBtn, toastEl);
   syncKeyButton();
@@ -4394,7 +4485,7 @@ a { color: #8ec5ff; }
     editorLabel: (key) => EDITORS[key || editorKey].label,
     wheelPages: () => true,
     reviewerKey,
-    onKeyRejected: (code) => forgetKey(code === "key_expired" ? "Your gallery key has expired, so it was removed." : "Your gallery key was revoked, so it was removed."),
+    onKeyRejected: (code) => forgetKey2(code === "key_expired" ? "Your gallery key has expired, so it was removed." : "Your gallery key was revoked, so it was removed."),
     linkSteps,
     watchLink: true,
     submitNote: "Make cards in an editor (Editor, in the top bar) and save them to a file: UC Editor's group download (.uceditor), or feildmaster's Export \u2192 Download (.json). Then Add files\u2026. With Wizascript installed, Read from this editor works too."
@@ -4440,20 +4531,9 @@ a { color: #8ec5ff; }
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") gallery.flush();
   });
-  function recheckKey() {
-    const k = reviewerKey();
-    if (!k) return;
-    reviewWhoami(k).then((me) => {
-      GM_setValue(REVIEW_WHO, JSON.stringify({ name: me.name, role: me.role }));
-      syncKeyButton();
-    }, (e) => {
-      if (e && e.code === "key_expired") forgetKey("Your gallery key has expired, so it was removed.");
-      else if (e && e.code === "not_admin") forgetKey("Your gallery key was revoked, so it was removed.");
-    });
-  }
   checkFrameImages();
   go(location.hash.slice(1) || "browse", { replace: true });
   gallery.opened();
-  recheckKey();
+  recheckKey(toast);
   GM_deleteValue("wizascript.site.samples");
 })();

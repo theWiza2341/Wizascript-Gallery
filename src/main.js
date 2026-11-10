@@ -10,12 +10,14 @@
 // What this file adds around it (the page itself):
 //  - the top bar: Editor | Browse | Contest | Submit | Review, and ? (help);
 //  - the editors, framed like the Card Maker does (with their authors' OK);
-//  - the key button at the bottom left (Redeem Key, like Wizascript's);
+//  - the key button at the bottom left (Redeem Key, Wizascript's own box from
+//    gallery/keybox.js: gallery keys, and device codes WZL-… that link this
+//    browser to an account linked elsewhere);
 //  - linking through the console (link-steps.js), checked automatically.
 
 import "./setup.js"; // must stay first: storage + asset origin for the code below
 import { buildGalleryPanel } from "@wz/card-maker/gallery/panel.js";
-import { reviewWhoami } from "@wz/card-maker/gallery/api.js";
+import { reviewerKey, reviewerWho, keyLabel, keyBox, forgetKey as dropKey, recheckKey, onKeyChange } from "@wz/card-maker/gallery/keybox.js";
 import { checkFrameImages, CARD_FONT } from "@wz/card-maker/gallery/render.js";
 import { h, button } from "@wz/card-maker/gallery/dom.js";
 import { EDITORS, FRAME_MESSAGE } from "@wz/card-maker/editors.js";
@@ -23,10 +25,7 @@ import { linkSteps } from "./link-steps.js";
 import { SITE_CSS } from "./style.js";
 
 const VIEWS = [["editor", "Editor", "✎"], ["browse", "Browse", "▤"], ["contest", "Contest", "★"], ["submit", "Submit", "⬆"], ["review", "Review", "✓"]];
-const REVIEW_KEY = "wizascript.cardMaker.galleryReview";
-const REVIEW_WHO = "wizascript.cardMaker.galleryReviewWho";
 const EDITOR_KEY = "wizascript.site.editor";
-const ROLE_NAMES = { owner: "owner", reviewer: "reviewer", judge: "judge" };
 const CREDIT = { feildmaster: "by feildmaster", sernon: "by sernon158" };
 const SHORT = { feildmaster: "feildmaster's Template Editor", sernon: "UC Editor" };
 
@@ -35,34 +34,18 @@ style.textContent = SITE_CSS.replace(/\$FONT/g, CARD_FONT);
 document.head.appendChild(style);
 
 // ---- keys (review and judging) ------------------------------------------------------
-// Same as Wizascript's Redeem Key: the server checks every request against the
-// key, so a revoked or expired key stops working at once and is forgotten here.
-const reviewerKey = () => GM_getValue(REVIEW_KEY, "") || "";
-const reviewerWho = () => { try { return JSON.parse(GM_getValue(REVIEW_WHO, "null")); } catch (e) { return null; } };
+// Wizascript's own key box (gallery/keybox.js): the server checks every request
+// against the key, so a revoked or expired key stops working at once and is
+// forgotten here. It also takes device codes (WZL-…), which link this browser.
 let gallery = null;
 function keyChanged() {
   syncKeyButton();
   if (gallery) gallery.reviewerChanged();
   syncNav();
 }
+onKeyChange(keyChanged);
 function forgetKey(message) {
-  if (!reviewerKey()) return;
-  GM_deleteValue(REVIEW_KEY);
-  GM_deleteValue(REVIEW_WHO);
-  keyChanged();
-  if (message) toast(message);
-}
-async function redeemKey(raw) {
-  const k = typeof raw === "string" ? raw.trim() : "";
-  if (!k) throw new Error("Enter the key you were given.");
-  let me;
-  try { me = await reviewWhoami(k); } catch (e) {
-    throw new Error(e && e.code === "not_admin" ? "That key isn't valid." : e && e.code === "key_expired" ? "That key has expired." : e && e.code === "rate_limited" ? "Too many wrong keys. Try again in an hour." : (e && e.message) || "Couldn't check the key.");
-  }
-  GM_setValue(REVIEW_KEY, k);
-  GM_setValue(REVIEW_WHO, JSON.stringify({ name: me.name, role: me.role }));
-  keyChanged();
-  return me;
+  if (dropKey() && message) toast(message);
 }
 
 // ---- a small dialog --------------------------------------------------------------------
@@ -90,41 +73,7 @@ function toast(text) {
 }
 
 function openKeyDialog() {
-  const wrap = h("div", { class: "wz-site-key" });
-  const status = h("p", { class: "wz-site-kstatus" });
-  const show = (text, ok) => { status.textContent = text; status.style.color = ok ? "#7f7" : "#f77"; };
-  function draw() {
-    wrap.replaceChildren();
-    const who = reviewerKey() && reviewerWho();
-    if (who) {
-      wrap.append(
-        h("p", {}, "Active key: ", h("b", { text: who.name }), ` (${ROLE_NAMES[who.role] || "reviewer"}).`),
-        h("p", { class: "dim", text: "Review is in the top bar." }),
-        h("p", {}, button("Remove key", () => { forgetKey(); draw(); show("Key removed.", true); }, { cls: "wz-site-danger" })),
-        status);
-      return;
-    }
-    const input = h("input", { type: "password", placeholder: "Key", autocomplete: "off", spellcheck: false });
-    let busy = false;
-    const submit = async () => {
-      if (busy) return;
-      busy = true; go.disabled = true; show("Checking…", true);
-      try {
-        const me = await redeemKey(input.value);
-        draw();
-        show(me.role === "judge" ? `Redeemed. You're judging as ${me.name}: press Review in the top bar.` : `Redeemed. You're reviewing as ${me.name}.`, true);
-      } catch (e) { show(e.message, false); }
-      busy = false; go.disabled = false;
-    };
-    const go = button("Redeem", submit, { primary: true });
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
-    wrap.append(
-      h("p", { text: "Enter a key you were given to review gallery uploads or judge a contest." }),
-      h("div", { class: "wz-site-krow" }, input, go), status);
-    setTimeout(() => input.focus(), 50);
-  }
-  draw();
-  dialog("Redeem Key", wrap);
+  dialog("Redeem Key", keyBox({ reviewWhere: "in the top bar" }));
 }
 
 function openHelp() {
@@ -152,9 +101,8 @@ const editorPane = h("section", { class: "wz-site-editors" });
 const main = h("main", { class: "wz-site-main" }, editorPane);
 const keyBtn = h("button", { type: "button", class: "wz-site-keybtn", onclick: openKeyDialog, "aria-label": "Redeem Key" }, h("span", { text: "⚿" }));
 function syncKeyButton() {
-  const who = reviewerKey() && reviewerWho();
-  keyBtn.title = who ? `Key: ${who.name} (${ROLE_NAMES[who.role] || "reviewer"})` : "Redeem Key";
-  keyBtn.classList.toggle("on", !!who);
+  keyBtn.title = keyLabel();
+  keyBtn.classList.toggle("on", !!(reviewerKey() && reviewerWho()));
 }
 document.body.append(top, main, keyBtn, toastEl);
 syncKeyButton();
@@ -273,22 +221,10 @@ window.addEventListener("popstate", () => go(location.hash.slice(1)));
 window.addEventListener("pagehide", () => gallery.flush());
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") gallery.flush(); });
 
-// A stored key is checked once per visit, so a revoked one is forgotten.
-function recheckKey() {
-  const k = reviewerKey();
-  if (!k) return;
-  reviewWhoami(k).then((me) => {
-    GM_setValue(REVIEW_WHO, JSON.stringify({ name: me.name, role: me.role }));
-    syncKeyButton();
-  }, (e) => {
-    if (e && e.code === "key_expired") forgetKey("Your gallery key has expired, so it was removed.");
-    else if (e && e.code === "not_admin") forgetKey("Your gallery key was revoked, so it was removed.");
-  });
-}
-
 checkFrameImages();
 go(location.hash.slice(1) || "browse", { replace: true });
 gallery.opened();
-recheckKey();
+// A stored key is checked once per visit, so a revoked one is forgotten.
+recheckKey(toast);
 // The dev builds' Samples switch (removed for 1.0.0) left a value behind.
 GM_deleteValue("wizascript.site.samples");
