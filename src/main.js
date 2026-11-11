@@ -18,6 +18,7 @@
 import "./setup.js"; // must stay first: storage + asset origin for the code below
 import { buildGalleryPanel } from "@wz/card-maker/gallery/panel.js";
 import { reviewerKey, reviewerWho, keyLabel, keyBox, forgetKey as dropKey, recheckKey, onKeyChange, deviceBox, DEVICE_TITLE } from "@wz/card-maker/gallery/keybox.js";
+import { newNoteAlerts, alertText } from "@wz/card-maker/gallery/notes.js";
 import { checkFrameImages, CARD_FONT } from "@wz/card-maker/gallery/render.js";
 import { h, button } from "@wz/card-maker/gallery/dom.js";
 import { EDITORS, FRAME_MESSAGE } from "@wz/card-maker/editors.js";
@@ -209,7 +210,8 @@ function syncNav() {
 // ---- views, kept in the address (#browse, #contest, …) so links and Back work ----
 let current = null;
 function go(view, { replace = false } = {}) {
-  if (!VIEWS.some(([v]) => v === view)) view = "browse";
+  // "notes" (an author's notes from the staff) has no button in the top bar.
+  if (!VIEWS.some(([v]) => v === view) && view !== "notes") view = "browse";
   if (view === "review" && !gallery.isReviewer()) view = "browse";
   if (view === current) return;
   current = view;
@@ -230,5 +232,18 @@ go(location.hash.slice(1) || "browse", { replace: true });
 gallery.opened();
 // A stored key is checked once per visit, so a revoked one is forgotten.
 recheckKey(toast);
+// Post notes: a new message from the staff about one of your posts shows as a
+// small popup at the bottom right; clicking it opens the note.
+const notePop = h("div", { class: "wz-site-notepop", role: "status" });
+document.body.appendChild(notePop);
+setTimeout(async () => {
+  const fresh = await newNoteAlerts({ every: 60e3 }).catch(() => []);
+  if (!fresh.length) return;
+  const openIt = () => { notePop.classList.remove("on"); go("notes"); gallery.openNote(fresh[0].id); };
+  notePop.replaceChildren(
+    h("button", { type: "button", class: "wz-site-notepop-main", onclick: openIt }, h("span", { class: "ic", text: "✉" }), h("span", { text: alertText(fresh) })),
+    h("button", { type: "button", class: "wz-site-notepop-x", title: "Dismiss", text: "×", onclick: () => notePop.classList.remove("on") }));
+  notePop.classList.add("on");
+}, 1500);
 // The dev builds' Samples switch (removed for 1.0.0) left a value behind.
 GM_deleteValue("wizascript.site.samples");

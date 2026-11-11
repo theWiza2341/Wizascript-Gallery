@@ -56,6 +56,14 @@ a { color: #8ec5ff; }
 .wz-site-keybtn.on { color: #ffd84a; border-color: #ffd84a; opacity: .9; }
 .wz-site-keybtn.wz-site-devbtn { left: 46px; font-size: 15px; }
 
+/* post notes: "new message" popup, bottom right */
+.wz-site-notepop { position: fixed; right: 14px; bottom: 14px; z-index: 45; display: none; align-items: stretch; background: #000; border: 2px solid #ffd84a; border-radius: 4px; box-shadow: 0 4px 18px rgba(0,0,0,.7); max-width: calc(100vw - 100px); }
+.wz-site-notepop.on { display: flex; }
+.wz-site-notepop-main { display: flex; align-items: center; gap: 8px; background: none; border: 0; color: #fff; padding: 10px 12px; font: 14px Arial, sans-serif; cursor: pointer; text-align: left; }
+.wz-site-notepop-main .ic { color: #ffd84a; font-size: 16px; }
+.wz-site-notepop-x { background: none; border: 0; border-left: 1px solid #444; color: #aaa; padding: 0 10px; font-size: 18px; cursor: pointer; }
+.wz-site-notepop-x:hover, .wz-site-notepop-main:hover { color: #fff; }
+
 /* dialogs */
 .wz-site-dback { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .wz-site-dialog { width: min(440px, 100%); background: #0d0d0d; border: 2px solid #fff; border-radius: 4px; box-shadow: 0 6px 24px rgba(0,0,0,.8); font-size: 14px; }
