@@ -748,6 +748,48 @@
     return true;
   }
 
+  // ../wz174/packages/core/http.js
+  function gmRequest() {
+    if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest;
+    if (typeof GM !== "undefined" && GM && typeof GM.xmlHttpRequest === "function") return GM.xmlHttpRequest.bind(GM);
+    return null;
+  }
+  var failure = (kind, message) => Object.assign(new Error(message), { kind });
+  function http(method, url, { headers = {}, body, timeout = 2e4 } = {}) {
+    const h2 = { ...headers };
+    if (body === void 0 || body === null) Object.keys(h2).forEach((k) => {
+      if (k.toLowerCase() === "content-type") delete h2[k];
+    });
+    const gm = gmRequest();
+    if (gm) {
+      return new Promise((resolve, reject) => {
+        try {
+          gm({
+            method,
+            url,
+            headers: h2,
+            data: body,
+            timeout,
+            onload: (r) => resolve({ status: r.status, text: r.responseText || "" }),
+            onerror: () => reject(failure("network", "network error")),
+            ontimeout: () => reject(failure("timeout", "timed out"))
+          });
+        } catch (e) {
+          reject(failure("network", e && e.message || "network error"));
+        }
+      });
+    }
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    let timedOut = false;
+    const timer = ctl && timeout ? setTimeout(() => {
+      timedOut = true;
+      ctl.abort();
+    }, timeout) : null;
+    return fetch(url, { method, headers: h2, body: body === null ? void 0 : body, signal: ctl ? ctl.signal : void 0, credentials: "omit" }).then(async (r) => ({ status: r.status, text: await r.text() })).catch(() => {
+      throw timedOut ? failure("timeout", "timed out") : failure("network", "network error");
+    }).finally(() => clearTimeout(timer));
+  }
+
   // ../wz174/packages/core/account.js
   var DEFAULT_WORKER = "https://wizascript-gallery.thewiza2341.workers.dev";
   var WORKER_HOSTS = ["wizascript-gallery.thewiza2341.workers.dev"];
@@ -771,31 +813,17 @@
   var worker = (cachedServer() || {}).url || DEFAULT_WORKER;
   var checking2 = null;
   function fetchServer() {
-    return new Promise((resolve) => {
-      const keep = () => resolve(worker);
+    return http("GET", SERVER_FILE + "?t=" + Math.floor(Date.now() / 6e4), { timeout: 6e3 }).then((r) => {
       try {
-        GM_xmlhttpRequest({
-          method: "GET",
-          url: SERVER_FILE + "?t=" + Math.floor(Date.now() / 6e4),
-          timeout: 6e3,
-          onload: (r) => {
-            try {
-              const u = r.status === 200 ? String(JSON.parse(r.responseText).worker || "").replace(/\/+$/, "") : "";
-              if (isWorkerUrl(u)) {
-                worker = u;
-                GM_setValue(SERVER_KEY, JSON.stringify({ at: Date.now(), url: u }));
-              }
-            } catch (e) {
-            }
-            keep();
-          },
-          onerror: keep,
-          ontimeout: keep
-        });
+        const u = r.status === 200 ? String(JSON.parse(r.text).worker || "").replace(/\/+$/, "") : "";
+        if (isWorkerUrl(u)) {
+          worker = u;
+          GM_setValue(SERVER_KEY, JSON.stringify({ at: Date.now(), url: u }));
+        }
       } catch (e) {
-        keep();
       }
-    });
+      return worker;
+    }, () => worker);
   }
   function server() {
     const c = cachedServer();
@@ -816,37 +844,24 @@
     }
   };
   function request(method, url, { body, auth: auth2, adminKey } = {}) {
-    return new Promise((resolve, reject) => {
-      const headers = { "Content-Type": "application/json" };
-      if (auth2) {
-        headers["X-WZ-Install"] = auth2.install;
-        headers["X-WZ-Secret"] = auth2.secret;
+    const headers = {};
+    if (body) headers["Content-Type"] = "application/json";
+    if (auth2) {
+      headers["X-WZ-Install"] = auth2.install;
+      headers["X-WZ-Secret"] = auth2.secret;
+    }
+    if (adminKey) headers["X-WZ-Admin"] = adminKey;
+    return http(method, url, { headers, body: body ? JSON.stringify(body) : void 0, timeout: 3e4 }).then((r) => {
+      let data = null;
+      try {
+        data = r.text ? JSON.parse(r.text) : null;
+      } catch (e) {
       }
-      if (adminKey) headers["X-WZ-Admin"] = adminKey;
-      const done = (status, text) => {
-        let data = null;
-        try {
-          data = text ? JSON.parse(text) : null;
-        } catch (e) {
-        }
-        if (status >= 200 && status < 300) return resolve(data);
-        if (status === 404 && !data) return resolve(null);
-        reject(new ApiError(status, data && data.error || "http", data && data.message || `The gallery server answered ${status}.`, data));
-      };
-      if (typeof GM_xmlhttpRequest === "function") {
-        GM_xmlhttpRequest({
-          method,
-          url,
-          headers,
-          data: body ? JSON.stringify(body) : void 0,
-          timeout: 3e4,
-          onload: (r) => done(r.status, r.responseText),
-          onerror: () => reject(new ApiError(0, "network", "Couldn't reach the gallery server.")),
-          ontimeout: () => reject(new ApiError(0, "timeout", "The gallery server took too long to answer."))
-        });
-        return;
-      }
-      fetch(url, { method, headers, body: body ? JSON.stringify(body) : void 0 }).then(async (r) => done(r.status, await r.text()), () => reject(new ApiError(0, "network", "Couldn't reach the gallery server.")));
+      if (r.status >= 200 && r.status < 300) return data;
+      if (r.status === 404 && !data) return null;
+      throw new ApiError(r.status, data && data.error || "http", data && data.message || `The gallery server answered ${r.status}.`, data);
+    }, (e) => {
+      throw e && e.kind === "timeout" ? new ApiError(0, "timeout", "The gallery server took too long to answer.") : new ApiError(0, "network", "Couldn't reach the gallery server.");
     });
   }
   function loadAuth() {
@@ -1568,29 +1583,16 @@
   function getGuidelines() {
     const c = cachedGuidelines();
     if (c && Date.now() - c.at < GUIDE_TTL) return Promise.resolve(c.text);
-    return new Promise((resolve) => {
-      const fallback = () => resolve(c ? c.text : DEFAULT_GUIDELINES);
+    const fallback = () => c ? c.text : DEFAULT_GUIDELINES;
+    return http("GET", GUIDELINES_URL + "?t=" + Math.floor(Date.now() / 6e4), { timeout: 8e3 }).then((r) => {
+      const text = r.status === 200 ? String(r.text || "") : "";
+      if (!parseGuidelines(text).rules.length) return fallback();
       try {
-        GM_xmlhttpRequest({
-          method: "GET",
-          url: GUIDELINES_URL + "?t=" + Math.floor(Date.now() / 6e4),
-          timeout: 8e3,
-          onload: (r) => {
-            const text = r.status === 200 ? String(r.responseText || "") : "";
-            if (!parseGuidelines(text).rules.length) return fallback();
-            try {
-              GM_setValue(GUIDE_KEY, JSON.stringify({ at: Date.now(), text }));
-            } catch (e) {
-            }
-            resolve(text);
-          },
-          onerror: fallback,
-          ontimeout: fallback
-        });
+        GM_setValue(GUIDE_KEY, JSON.stringify({ at: Date.now(), text }));
       } catch (e) {
-        fallback();
       }
-    });
+      return text;
+    }, fallback);
   }
 
   // ../wz174/packages/card-maker/gallery/notes.js
