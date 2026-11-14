@@ -1,5 +1,8 @@
-// Wizascript Card Gallery website 0.1.0-dev3 (gallery code from Wizascript 1.7.4). Built by build.mjs from src/; edit src/, not this file.
+// Wizascript Card Gallery website 0.1.0-dev3 (gallery code from Wizascript 1.8.0). Built by build.mjs from src/; edit src/, not this file.
 (() => {
+  // ../wz/packages/core/privacy.js
+  var PRIVACY_URL = "https://github.com/theWiza2341/Wizascript/blob/main/legal/PRIVACY.md";
+
   // src/setup.js
   var PREFIX = "wzg:";
   function store() {
@@ -64,7 +67,7 @@
   };
   window.WZ_ASSET_ORIGIN = "https://undercards.net";
 
-  // ../wz174/packages/card-maker/gallery/dom.js
+  // ../wz/packages/card-maker/gallery/dom.js
   function h(tag, props = {}, ...kids) {
     const el = document.createElement(tag);
     for (const [k, v] of Object.entries(props || {})) {
@@ -87,7 +90,7 @@
     return h("button", { type: "button", class: `wz-cm-btn${primary ? " wz-gl-primary" : ""}${cls ? " " + cls : ""}`, title, onclick }, label);
   }
 
-  // ../wz174/packages/card-maker/gallery/artpic.js
+  // ../wz/packages/card-maker/gallery/artpic.js
   var ONE = 176;
   var TWO = 176 * 2 + 3;
   var H = 246;
@@ -401,7 +404,7 @@
     return img;
   }
 
-  // ../wz174/packages/card-maker/gallery/render.js
+  // ../wz/packages/card-maker/gallery/render.js
   var CARD_W = 176;
   var CARD_H = 246;
   var UCE = "https://sernon158.github.io/uc-editor/";
@@ -643,7 +646,7 @@
 .wz-gl-arttext { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 `;
 
-  // ../wz174/packages/card-maker/gallery/feild.js
+  // ../wz/packages/card-maker/gallery/feild.js
   var isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v || "");
   async function feildPart(e, ctx) {
     if (!e) return null;
@@ -693,12 +696,12 @@
     return groups;
   }
 
-  // ../wz174/packages/core/page-window.js
+  // ../wz/packages/core/page-window.js
   function getPageWindow() {
     return typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   }
 
-  // ../wz174/packages/core/uc-report.js
+  // ../wz/packages/core/uc-report.js
   var TAG = "WZ";
   var VERSION = 1;
   var HEADER = `#${TAG}${VERSION} `;
@@ -748,7 +751,7 @@
     return true;
   }
 
-  // ../wz174/packages/core/http.js
+  // ../wz/packages/core/http.js
   function gmRequest() {
     if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest;
     if (typeof GM !== "undefined" && GM && typeof GM.xmlHttpRequest === "function") return GM.xmlHttpRequest.bind(GM);
@@ -790,7 +793,7 @@
     }).finally(() => clearTimeout(timer));
   }
 
-  // ../wz174/packages/core/account.js
+  // ../wz/packages/core/account.js
   var DEFAULT_WORKER = "https://wizascript-gallery.thewiza2341.workers.dev";
   var WORKER_HOSTS = ["wizascript-gallery.thewiza2341.workers.dev"];
   var SERVER_FILE = "https://raw.githubusercontent.com/theWiza2341/Wizascript/sounds/server.json";
@@ -985,7 +988,7 @@
     });
   }
 
-  // ../wz174/packages/card-maker/gallery/parts.js
+  // ../wz/packages/card-maker/gallery/parts.js
   var ART = { Monster: [160, 90], Spell: [160, 90], Enchantment: [160, 183], Artifact: [64, 64] };
   var ARTIFACT_MAX_W = 704;
   var UCE2 = "https://sernon158.github.io/uc-editor/";
@@ -1288,7 +1291,7 @@
     return { w, h: h2, bg: bg.join(","), parts: out };
   }
 
-  // ../wz174/packages/card-maker/gallery/draft.js
+  // ../wz/packages/card-maker/gallery/draft.js
   var KEY = "wizascript.cardMaker.gallery";
   var draft = null;
   var saveTimer = null;
@@ -1384,7 +1387,7 @@
     return out;
   }
 
-  // ../wz174/packages/card-maker/gallery/api.js
+  // ../wz/packages/card-maker/gallery/api.js
   var GALLERY_RAW = "https://raw.githubusercontent.com/theWiza2341/Wizascript/gallery/";
   var UPLOAD_MAX_ENTRIES = 10;
   var UPLOAD_MAX_PICTURES = 40;
@@ -1595,7 +1598,7 @@
     }, fallback);
   }
 
-  // ../wz174/packages/card-maker/gallery/notes.js
+  // ../wz/packages/card-maker/gallery/notes.js
   var NOTES_CSS = `
 .wz-nt-list { display: flex; flex-direction: column; gap: 6px; }
 .wz-nt-row { display: flex; align-items: center; gap: 8px; text-align: left; background: #111; border: 1px solid #444; border-radius: 3px; color: #ddd; padding: 8px 10px; font: 13px Arial, sans-serif; cursor: pointer; }
@@ -1927,7 +1930,7 @@
   }
   var alertText = (fresh) => fresh.length === 1 ? `New message on "${fresh[0].title}"` : `New messages on ${fresh.length} of your posts`;
 
-  // ../wz174/packages/card-maker/gallery/browse.js
+  // ../wz/packages/card-maker/gallery/browse.js
   var LISTS = [["new", "Newest"], ["week", "This Week"], ["month", "This Month"], ["all", "All Time"]];
   var DT = `"DTM-Mono", "DTM Mono", "WZ DTM Mono", monospace`;
   var BROWSE_CSS = `
@@ -2316,7 +2319,7 @@
     return { area, pager, layout };
   }
 
-  // ../wz174/packages/card-maker/gallery/contest.js
+  // ../wz/packages/card-maker/gallery/contest.js
   var DT2 = `"DTM-Mono", "DTM Mono", "WZ DTM Mono", monospace`;
   var PLACES = ["1st", "2nd", "3rd"];
   var CONTEST_CSS = `
@@ -2875,7 +2878,7 @@
     return { state: cs, refresh, active, shownActive, slots, view, layout, judgingView, manageView, loadJudging, unscored, judgeContestId };
   }
 
-  // ../wz174/packages/card-maker/gallery/keybox.js
+  // ../wz/packages/card-maker/gallery/keybox.js
   var REVIEW_KEY = "wizascript.cardMaker.galleryReview";
   var REVIEW_WHO = "wizascript.cardMaker.galleryReviewWho";
   var ROLE_NAMES = { owner: "owner", reviewer: "reviewer", judge: "judge" };
@@ -3151,7 +3154,7 @@
 .wz-dev-carry { display: block; margin: 0 0 10px; font-size: 13px; cursor: pointer; }
 `;
 
-  // ../wz174/packages/card-maker/gallery/panel.js
+  // ../wz/packages/card-maker/gallery/panel.js
   var STYLE_ID = "wizascript-cardgallery-style";
   var TYPES = ["Monster", "Spell", "Enchantment", "Artifact"];
   var COLORS = ["#e6b422", "#4aa3df", "#e05a5a", "#5cc46a", "#b07de0", "#e08a3c", "#3cc8c0", "#d65ca8"];
@@ -3300,6 +3303,12 @@ ${NOTES_CSS}
   }
   var setColor = (set) => COLORS[(set.letter.charCodeAt(0) - 65) % COLORS.length];
   var sameCard = (p, source, group, raw) => p.source === source && p.editorGroup === group && p.name === (raw.name || "") && p.type === raw.type;
+  var privacyLine = (text) => h(
+    "div",
+    { class: "dim wz-gl-privacy", style: { margin: "4px 0 0", fontSize: "12px" } },
+    text + " ",
+    h("a", { href: PRIVACY_URL, target: "_blank", rel: "noopener", text: "Privacy" })
+  );
   function buildGalleryPanel({ requestRead, editorLabel, wheelPages, reviewerKey: reviewerKey2 = () => "", onKeyRejected = () => {
   }, linkSteps: linkSteps2 = null, watchLink = false, submitNote = null }) {
     injectStyle();
@@ -4009,6 +4018,7 @@ ${NOTES_CSS}
           h("li", {}, linkWatch ? "Then come back here: this page notices by itself, or press " : "Then: ", button("Check link", () => checkLink(), { primary: true }), h("span", { class: "dim", text: ` The code works for ${mins} more minute${mins === 1 ? "" : "s"}.` }))
         ),
         acct.account ? h("div", { class: "dim", text: `Switching from ${acct.account}: an install can switch accounts once a day, and accounts that share an install count as one voter.` }) : null,
+        privacyLine("Linking keeps your account name, its Undercards id and this device on the Wizascript server."),
         button("Cancel", () => {
           linking = null;
           stopWatch();
@@ -4537,6 +4547,7 @@ ${NOTES_CSS}
         ),
         h("div", { class: "wz-gl-revlist" }, rows),
         issues.length ? h("div", { class: "wz-gl-issues" }, issues.map((t) => h("div", { text: t }))) : null,
+        privacyLine("Your posts are public, with your account name, until you delete them."),
         h(
           "div",
           { class: "wz-gl-note", style: { margin: "6px 0 0" } },
@@ -4749,7 +4760,7 @@ ${NOTES_CSS}
     };
   }
 
-  // ../wz174/packages/card-maker/editors.js
+  // ../wz/packages/card-maker/editors.js
   var EDITORS = {
     feildmaster: {
       label: "feildmaster's Template Editor",
@@ -4842,6 +4853,9 @@ a { color: #8ec5ff; }
 .wz-site-enote { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: #3a2a00; border-bottom: 1px solid #e0a800; }
 .wz-site-enote[hidden] { display: none; }
 .wz-cm-btn.wz-gl-on { background: #4464bd; border-color: #8ea6e8; }
+
+.wz-site-privacy { color: #aaa; font-size: 13px; margin-right: 10px; text-decoration: none; }
+.wz-site-privacy:hover { color: #fff; text-decoration: underline; }
 
 /* key button, bottom left */
 .wz-site-keybtn { position: fixed; left: 10px; bottom: 10px; z-index: 40; width: 30px; height: 30px; border-radius: 15px; padding: 0;
@@ -4988,6 +5002,7 @@ a { color: #8ec5ff; }
     ),
     nav,
     h("span", { class: "wz-site-grow" }),
+    h("a", { class: "wz-site-privacy", href: PRIVACY_URL, target: "_blank", rel: "noopener", text: "Privacy", title: "What the Card Gallery keeps, and how to see or delete it" }),
     button("?", openHelp, { cls: "wz-site-help-btn", title: "What is this?" })
   );
   var editorPane = h("section", { class: "wz-site-editors" });

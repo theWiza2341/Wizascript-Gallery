@@ -49,6 +49,9 @@ a { color: #8ec5ff; }
 .wz-site-enote[hidden] { display: none; }
 .wz-cm-btn.wz-gl-on { background: #4464bd; border-color: #8ea6e8; }
 
+.wz-site-privacy { color: #aaa; font-size: 13px; margin-right: 10px; text-decoration: none; }
+.wz-site-privacy:hover { color: #fff; text-decoration: underline; }
+
 /* key button, bottom left */
 .wz-site-keybtn { position: fixed; left: 10px; bottom: 10px; z-index: 40; width: 30px; height: 30px; border-radius: 15px; padding: 0;
   background: #000; color: #bbb; border: 1px solid #666; font-size: 16px; line-height: 28px; cursor: pointer; opacity: .55; }

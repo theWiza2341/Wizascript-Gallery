@@ -15,6 +15,7 @@
 //    browser to an account linked elsewhere);
 //  - linking through the console (link-steps.js), checked automatically.
 
+import { PRIVACY_URL } from "@wz/core/privacy.js";
 import "./setup.js"; // must stay first: storage + asset origin for the code below
 import { buildGalleryPanel } from "@wz/card-maker/gallery/panel.js";
 import { reviewerKey, reviewerWho, keyLabel, keyBox, forgetKey as dropKey, recheckKey, onKeyChange, deviceBox, DEVICE_TITLE } from "@wz/card-maker/gallery/keybox.js";
@@ -100,6 +101,7 @@ const top = h("header", { class: "wz-site-top" },
   h("a", { class: "wz-site-brand", href: "#browse", onclick: (e) => { e.preventDefault(); go("browse"); } },
     h("img", { src: "pack.png", alt: "" }), h("span", { text: "Card Gallery" })),
   nav, h("span", { class: "wz-site-grow" }),
+  h("a", { class: "wz-site-privacy", href: PRIVACY_URL, target: "_blank", rel: "noopener", text: "Privacy", title: "What the Card Gallery keeps, and how to see or delete it" }),
   button("?", openHelp, { cls: "wz-site-help-btn", title: "What is this?" }));
 const editorPane = h("section", { class: "wz-site-editors" });
 const main = h("main", { class: "wz-site-main" }, editorPane);
