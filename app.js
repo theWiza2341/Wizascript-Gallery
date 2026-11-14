@@ -1409,6 +1409,8 @@
   var reviewContest = (key, id) => admin("GET", `/v1/admin/contest?id=${encodeURIComponent(id)}`, key);
   var reviewScore = (key, contest, post, score) => admin("POST", "/v1/admin/score", key, { contest, post, score });
   var manageContest = (key, body) => admin("POST", "/v1/admin/contests", key, body);
+  var pauseGet = (key) => admin("GET", "/v1/admin/pause", key);
+  var pauseSet = (key, body) => admin("POST", "/v1/admin/pause", key, body);
   var getContests = () => call("GET", "/v1/contests");
   var reviewPending = (key) => admin("GET", "/v1/admin/pending", key);
   var reviewPost = (key, id) => admin("GET", `/v1/admin/post?id=${encodeURIComponent(id)}`, key);
@@ -3191,6 +3193,14 @@
 .wz-gl-rmenu button.on { background: #ffd84a; color: #000; }
 .wz-gl-rmenu .n { background: #e05a5a; color: #fff; border-radius: 9px; padding: 0 6px; font: 11px/16px Arial, sans-serif; }
 .wz-gl-rmenu .who { padding: 10px 12px; border-top: 2px solid #fff; font-size: 12px; opacity: .8; }
+/* phones (the gallery website): the Review menu goes on top as a row of buttons */
+@media (max-width: 640px) {
+  .wz-gl-rside { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .wz-gl-rmenu { position: static; flex-direction: row; flex-wrap: wrap; }
+  .wz-gl-rmenu button { flex: 1 1 auto; padding: 8px 10px; font-size: 14px; }
+  .wz-gl-rmenu button + button { border-top: 0; border-left: 1px solid #333; }
+  .wz-gl-rmenu .who { width: 100%; }
+}
 .wz-gl-ctag { display: inline-block; background: #3a2f0a; border: 1px solid #ffd84a; color: #ffd84a; font-size: 10px; padding: 0 4px; margin-left: 6px; }
 .wz-gl-target { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; }
 .wz-gl-tabs { flex: none; }
@@ -3363,6 +3373,9 @@ ${NOTES_CSS}
       log: null,
       logOnly: "",
       reviewers: null,
+      pause: null,
+      pauseNote: "",
+      pausing: false,
       newKey: null,
       newName: "",
       newRole: "reviewer",
@@ -3556,13 +3569,13 @@ ${NOTES_CSS}
         if (staffNotes()) sections.push(["notes", "Notes", notes.staffUnread()]);
         sections.push(["log", "Log", 0]);
       }
-      if (isOwner()) sections.push(["contests", "Contests", 0], ["reviewers", "Reviewers", 0]);
+      if (isOwner()) sections.push(["contests", "Contests", 0], ["reviewers", "Reviewers", 0], ["switches", "Kill switches", 0]);
       if (!sections.some(([k]) => k === rev.section)) {
         rev.section = sections[0][0];
         if (rev.section === "judging") contests.loadJudging(true);
       }
       const who = rev.who ? `${isJudge() ? "Judging" : "Reviewing"} as ${rev.who.name}${realRole() === "owner" ? " (owner)" : ""}${viewAs ? `, previewing ${viewAs}` : ""}` : "";
-      const body = rev.section === "notes" ? notes.staffView() : rev.section === "log" ? logView() : rev.section === "reviewers" ? reviewersView() : rev.section === "judging" ? contests.judgingView() : rev.section === "contests" ? contests.manageView() : uploadsView();
+      const body = rev.section === "notes" ? notes.staffView() : rev.section === "log" ? logView() : rev.section === "reviewers" ? reviewersView() : rev.section === "switches" ? switchesView() : rev.section === "judging" ? contests.judgingView() : rev.section === "contests" ? contests.manageView() : uploadsView();
       const count = (n) => n ? h("span", { class: "n", text: String(n) }) : null;
       const menu = h(
         "div",
@@ -3592,6 +3605,7 @@ ${NOTES_CSS}
         loadReviewers();
         contests.refresh();
       }
+      if (k === "switches") loadPause();
       if (k === "judging") contests.loadJudging(true);
       if (k === "contests") contests.refresh(true);
       render();
@@ -3650,7 +3664,8 @@ ${NOTES_CSS}
       undo_score: "undid a score on",
       score: "scored",
       note_open: "started a note on",
-      note_close: "closed the note on"
+      note_close: "closed the note on",
+      pause: "set"
     };
     function logLine(l) {
       const canUndo = realRole() === "owner" && !viewAs && l.undo && l.undo.ok;
@@ -3783,6 +3798,79 @@ ${NOTES_CSS}
         removeButton({ rerender: render }, r, { label: "Revoke", confirm: "Revoke?", title: `Stop ${r.name}'s key working`, run: revokeReviewer })
       ))));
       return h("div", {}, ...parts);
+    }
+    async function loadPause() {
+      try {
+        rev.pause = await pauseGet(reviewerKey2());
+        rev.pauseNote = rev.pause.note || "";
+        rev.sectionError = "";
+      } catch (e) {
+        rev.sectionError = errText(e);
+      }
+      if (open && tab === "review") render();
+    }
+    async function setPause(change) {
+      if (rev.pausing) return;
+      rev.pausing = true;
+      render();
+      try {
+        rev.pause = await pauseSet(reviewerKey2(), { ...change, note: rev.pauseNote.trim() });
+        say("Saved. Every player sees it within about 15 seconds.");
+      } catch (e) {
+        say(`Couldn't change it: ${errText(e)}`);
+      }
+      rev.pausing = false;
+      render();
+    }
+    function switchesView() {
+      if (rev.sectionError) return h("div", { class: "wz-gl-issues", text: rev.sectionError });
+      if (!rev.pause) return h("p", { class: "wz-gl-note", text: "Loading\u2026" });
+      const row = (k, label, what) => {
+        const on = !!rev.pause[k];
+        const armed = rev.pauseArmed === k;
+        const b = button(rev.pausing ? "\u2026" : on ? `Turn ${label} back on` : armed ? `Tap again to pause ${label}` : `Pause ${label}`, () => {
+          if (on) return setPause({ [k]: false });
+          if (!armed) {
+            rev.pauseArmed = k;
+            render();
+            setTimeout(() => {
+              if (rev.pauseArmed === k) {
+                rev.pauseArmed = null;
+                render();
+              }
+            }, 3e3);
+            return;
+          }
+          rev.pauseArmed = null;
+          setPause({ [k]: true });
+        }, { primary: on, title: what });
+        if (!on) {
+          b.style.background = armed ? "#c0392b" : "#6b1d1d";
+          b.style.borderColor = "#e55";
+          b.style.color = "#fff";
+        }
+        b.disabled = rev.pausing;
+        Object.assign(b.style, { minHeight: "44px", height: "auto", width: "100%", maxWidth: "360px", fontSize: "15px", whiteSpace: "normal" });
+        return h(
+          "div",
+          { class: "wz-gl-rev", style: { padding: "10px" } },
+          h("div", {}, h("b", { text: label }), " ", h("span", { class: on ? "red" : "green", style: { color: on ? "#f77" : "#7f7" }, text: on ? "PAUSED" : "running" })),
+          h("div", { class: "dim", text: what }),
+          h("div", { style: { marginTop: "6px" } }, b)
+        );
+      };
+      const note = h("input", { type: "text", maxLength: 200, value: rev.pauseNote, placeholder: "Optional message for players (e.g. Back tomorrow.)", style: { width: "100%", maxWidth: "420px" }, oninput: (e) => {
+        rev.pauseNote = e.target.value;
+      } });
+      return h(
+        "div",
+        {},
+        h("p", { class: "wz-gl-note", text: "Stop the server answering players, one area at a time. Your key keeps working, so you can switch it back from here. Browsing approved posts still works (they're on GitHub)." }),
+        row("gallery", "Card Gallery", "Uploads, votes, totals, notes, contests, and review for every key but yours."),
+        row("stats", "Usage Statistics", "Statistics, sending games, Profile and History extras. Games wait on players' devices; Download / Delete My Data still work."),
+        h("div", { class: "wz-gl-bar", style: { marginTop: "8px" } }, note),
+        h("p", { class: "dim", text: rev.pause.at ? `Last changed ${ago2(rev.pause.at)}${rev.pause.by ? ` by ${rev.pause.by}` : ""}. A flood of traffic needs Cloudflare's own switch (see the handbook).` : "A flood of traffic needs Cloudflare's own switch (see the handbook)." })
+      );
     }
     async function deleteMine(e) {
       try {
